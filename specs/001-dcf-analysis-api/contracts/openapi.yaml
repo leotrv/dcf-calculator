@@ -1,0 +1,222 @@
+openapi: 3.0.0
+info:
+  title: DCF Analysis API
+  version: 1.0.0
+  description: REST API for Discounted Cash Flow (DCF) valuation analysis
+  contact:
+    name: DCF-Agent Project
+  license:
+    name: MIT
+
+servers:
+  - url: http://localhost:8000
+    description: Local development server
+  - url: https://api.example.com
+    description: Production server (placeholder)
+
+paths:
+  /dcf/calculate:
+    post:
+      summary: Calculate DCF Valuation
+      description: |
+        Performs Discounted Cash Flow analysis using the Gordon Growth Model.
+        Returns Enterprise Value and Equity Value calculations.
+      operationId: calculateDCF
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DCFRequest'
+            examples:
+              baseline:
+                summary: Baseline 5-year forecast
+                value:
+                  fcf: [1000, 1100, 1200, 1300, 1400]
+                  wacc: 0.10
+                  g: 0.03
+                  net_debt: 2000000
+              single_year:
+                summary: Single-year forecast
+                value:
+                  fcf: [1000]
+                  wacc: 0.08
+                  g: 0.02
+                  net_debt: 500000
+              with_custom_tv:
+                summary: With pre-calculated Terminal Value
+                value:
+                  fcf: [1000, 1100, 1200]
+                  wacc: 0.10
+                  g: 0.03
+                  net_debt: 1000000
+                  terminal_value: 15000000
+      responses:
+        '200':
+          description: DCF calculation successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DCFResponse'
+              examples:
+                success:
+                  summary: Successful calculation
+                  value:
+                    enterprise_value: 5234567.89
+                    equity_value: 3234567.89
+                    terminal_value: 15000000.00
+                    discounted_cash_flows: [909.09, 908.26, 901.58, 889.00, 868.44]
+                    discounted_terminal_value: 9294862.05
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                wacc_le_g:
+                  summary: WACC not greater than g
+                  value:
+                    error: "WACC must be strictly greater than terminal growth rate g. Current: WACC=0.05, g=0.06"
+                    error_code: "WACC_LE_G"
+                    details:
+                      wacc: 0.05
+                      g: 0.06
+                empty_fcf:
+                  summary: FCF array empty
+                  value:
+                    error: "Free Cash Flow array cannot be empty. At least one FCF value required."
+                    error_code: "EMPTY_FCF_ARRAY"
+                    details: null
+                forecast_out_of_range:
+                  summary: Forecast period too long
+                  value:
+                    error: "Forecast period must be between 1 and 30 years. Provided: 35 years"
+                    error_code: "FORECAST_PERIOD_OUT_OF_RANGE"
+                    details:
+                      forecast_years: 35
+        '422':
+          description: Unprocessable entity (JSON type error)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: array
+                    items:
+                      type: object
+
+components:
+  schemas:
+    DCFRequest:
+      type: object
+      required:
+        - fcf
+        - wacc
+        - g
+        - net_debt
+      properties:
+        fcf:
+          type: array
+          items:
+            type: number
+            format: float
+          minItems: 1
+          maxItems: 30
+          description: Array of projected annual Free Cash Flows. Must contain 1-30 values, all non-negative.
+          example: [1000, 1100, 1200, 1300, 1400]
+        wacc:
+          type: number
+          format: float
+          description: Weighted Average Cost of Capital as decimal (e.g., 0.10 for 10%). Must be > 0 and > g.
+          example: 0.10
+          exclusiveMinimum: 0
+        g:
+          type: number
+          format: float
+          description: Terminal growth rate as decimal (e.g., 0.03 for 3%). Must be >= 0 and < WACC.
+          example: 0.03
+          minimum: 0
+        net_debt:
+          type: number
+          format: float
+          description: Net Debt = Total Debt - Cash. Can be positive (debt), zero, or negative (net cash).
+          example: 2000000
+        terminal_value:
+          type: number
+          format: float
+          nullable: true
+          description: Optional pre-calculated Terminal Value. If omitted, calculated from FCF, WACC, and g using Gordon Growth Model.
+          example: null
+
+    DCFResponse:
+      type: object
+      required:
+        - enterprise_value
+        - equity_value
+        - terminal_value
+        - discounted_cash_flows
+        - discounted_terminal_value
+      properties:
+        enterprise_value:
+          type: number
+          format: float
+          description: Enterprise Value = sum of discounted cash flows + discounted terminal value. Rounded to 2 decimal places.
+          example: 5234567.89
+        equity_value:
+          type: number
+          format: float
+          description: Equity Value = Enterprise Value - Net Debt. Value available to equity holders. Rounded to 2 decimal places.
+          example: 3234567.89
+        terminal_value:
+          type: number
+          format: float
+          description: Terminal Value (either provided or calculated). Rounded to 2 decimal places.
+          example: 15000000.00
+        discounted_cash_flows:
+          type: array
+          items:
+            type: number
+            format: float
+          description: Present value of each year's FCF. Array length matches input FCF array. Each element rounded to 2 decimal places.
+          example: [909.09, 908.26, 901.58, 889.00, 868.44]
+        discounted_terminal_value:
+          type: number
+          format: float
+          description: Present value of Terminal Value = TV / (1 + WACC)^n. Rounded to 2 decimal places.
+          example: 9294862.05
+
+    ErrorResponse:
+      type: object
+      required:
+        - error
+        - error_code
+      properties:
+        error:
+          type: string
+          description: Human-readable error message
+          example: "WACC must be strictly greater than terminal growth rate g. Current: WACC=0.05, g=0.06"
+        error_code:
+          type: string
+          enum:
+            - EMPTY_FCF_ARRAY
+            - NEGATIVE_FCF_VALUE
+            - FORECAST_PERIOD_OUT_OF_RANGE
+            - INVALID_WACC
+            - INVALID_G
+            - WACC_LE_G
+            - INVALID_NETDEBT
+          description: Machine-readable error code for programmatic handling
+          example: "WACC_LE_G"
+        details:
+          type: object
+          nullable: true
+          description: Optional additional details depending on error type
+          example:
+            wacc: 0.05
+            g: 0.06
+
+tags:
+  - name: DCF Analysis
+    description: Discounted Cash Flow valuation calculations
