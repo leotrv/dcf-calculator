@@ -78,7 +78,6 @@ class DCFRequest(BaseModel):
             fcf = self.starting_fcf * (growth_factor ** year)
             fcf_list.append(fcf)
         self._fcf_list = fcf_list
-        print(  "Computed FCF List:", self._fcf_list)  # Debug statement
         return self
 
     @computed_field
