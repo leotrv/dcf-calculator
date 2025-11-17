@@ -1,9 +1,22 @@
 from __future__ import annotations
 from typing import List, Optional
-from pydantic import BaseModel, Field, field_validator, model_validator, computed_field, PrivateAttr
+from pydantic import BaseModel, Field, field_validator, model_validator, computed_field, PrivateAttr, ConfigDict
 
 
 class DCFRequest(BaseModel):
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "starting_fcf": 72.764,
+                "fcf_growth_rate": 12.0,
+                "years": 10,
+                "discount_rate": 8.0,
+                "terminal_growth_rate": 3.0,
+                "net_debt": -54.3,
+            }
+        }
+    )
+    
     starting_fcf: float = Field(..., description="Starting free cash flow (last historical year). Units: billions")
     fcf_growth_rate: float = Field(..., description="Forecast FCF growth rate (percent). Example: 5.0 = 5%")
     years: int = Field(..., description="Number of forecast years (integer)")

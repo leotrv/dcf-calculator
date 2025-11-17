@@ -2,12 +2,6 @@ version = 1
 revision = 1
 requires-python = ">=3.13"
 
-[manifest]
-members = [
-    "app",
-    "dcf-agent",
-]
-
 [[package]]
 name = "annotated-doc"
 version = "0.0.4"
@@ -38,11 +32,6 @@ sdist = { url = "https://files.pythonhosted.org/packages/c6/78/7d432127c41b50bcc
 wheels = [
     { url = "https://files.pythonhosted.org/packages/15/b3/9b1a8074496371342ec1e796a96f99c82c945a339cd81a8e73de28b4cf9e/anyio-4.11.0-py3-none-any.whl", hash = "sha256:0287e96f4d26d4149305414d4e3bc32f0dcd0862365a4bddea19d7a1ec38c4fc", size = 109097 },
 ]
-
-[[package]]
-name = "app"
-version = "0.1.0"
-source = { virtual = "app" }
 
 [[package]]
 name = "certifi"

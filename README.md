@@ -63,5 +63,3 @@ Run unit tests with:
 ```bash
 PYTHONPATH=. pytest -q
 ```
-
-Integration tests require `httpx` installed for FastAPI's test client. Install dev dependencies or `httpx` to run integration tests.
