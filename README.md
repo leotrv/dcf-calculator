@@ -27,13 +27,6 @@ uv sync
 poe dev
 ```
 
-If you use `uv` (recommended): run `uv sync` which will synchronize the environment
-and install any needed tooling (including tasks runners) for the project.
-
-```bash
-uv sync
-```
-
 API conventions and units
 -------------------------
 
@@ -77,4 +70,3 @@ Integration tests require `httpx` installed for FastAPI's test client. Install d
 pip install httpx
 PYTHONPATH=. pytest tests/integration -q
 ```
-
