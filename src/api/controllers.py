@@ -9,6 +9,15 @@ router = APIRouter(prefix="/dcf")
 
 @router.post('/calculate', response_model=DCFResponse)
 async def calculate(payload: DCFRequest):
+    """Calculate DCF and return values.
+
+    Units and conventions:
+    - All cash amounts (`starting_fcf`, `net_debt`, `terminal_value`) are expressed in billions.
+    - Feel free to use other units, but be consistent. Mathematical model is unit-agnostic.
+    - Growth rates and discount rates are expressed in percent (e.g., `8.0` means 8%).
+    - `starting_fcf` is the last historical year's FCF; the first forecast FCF (FCF1) = starting_fcf * (1 + fcf_growth_rate).
+    """
+
     service = DCFCalculationService()
     try:
         result = service.calculate_dcf(payload)

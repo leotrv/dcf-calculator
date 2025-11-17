@@ -3,7 +3,7 @@ from fastapi import FastAPI
 from fastapi.responses import RedirectResponse
 from src.api.controllers import router as dcf_router
 
-app = FastAPI(title='DCF Analysis API')
+app = FastAPI(title='DCF Analysis Agent', version='0.0.1')
 app.include_router(dcf_router)
 
 

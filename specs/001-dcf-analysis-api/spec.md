@@ -3,7 +3,7 @@
 **Feature Branch**: `001-dcf-analysis-api`  
 **Created**: 2025-11-16  
 **Status**: Draft  
-**Input**: FastAPI project providing DCF analysis based on five key financial variables (FCF, WACC, g, TV, NetDebt)
+**Input**: FastAPI project providing DCF analysis based on six key financial variables (`starting_fcf`, `fcf_growth_rate`, `years`, `discount_rate`, `terminal_growth_rate` (optional) and `net_debt`). Cash amounts are in billions; rates are expressed in percent.
 
 ## Clarifications
 
@@ -19,17 +19,17 @@
 
 ### User Story 1 - Calculate DCF Enterprise Value (Priority: P1)
 
-A financial analyst needs to calculate the Enterprise Value of a company using the Discounted Cash Flow method. The analyst provides a series of annual Free Cash Flow projections (e.g., 5 years), along with the Weighted Average Cost of Capital (WACC) and a terminal growth rate. The system computes the present value of each projected cash flow and the terminal value, then sums them to determine the Enterprise Value.
+A financial analyst needs to calculate the Enterprise Value of a company using the Discounted Cash Flow method. The analyst provides a `starting_fcf` (last historical year), a forecast growth rate (`fcf_growth_rate`), and the number of forecast `years`. The system builds the FCF series from these inputs, computes the present value of each projected cash flow and the terminal value (if requested), then sums them to determine the Enterprise Value.
 
 **Why this priority**: Enterprise Value is the fundamental output of DCF analysis. All other calculations depend on it. This is the core value proposition of the system.
 
-**Independent Test**: Can be fully tested by providing FCF array, WACC, and g; the system returns a calculated EV without requiring any other features. This is a complete, testable analysis.
+**Independent Test**: Can be fully tested by providing `starting_fcf`, `fcf_growth_rate`, `years`, and `discount_rate` (and optionally `terminal_growth_rate` or pre-computed `terminal_value`). This is a complete, testable analysis.
 
 **Acceptance Scenarios**:
 
-1. **Given** FCF array [1000, 1100, 1200, 1300, 1400], WACC=0.10, g=0.03, **When** user requests DCF analysis, **Then** system returns Enterprise Value calculated as the sum of discounted FCFs plus discounted terminal value
-2. **Given** FCF array with single year [1000], WACC=0.08, g=0.02, **When** user requests DCF analysis, **Then** system returns Enterprise Value with single-year discount plus terminal value
-3. **Given** multiple valid FCF projections with varying lengths, **When** user submits each, **Then** system correctly calculates EV for each scenario independently
+1. **Given** `starting_fcf` and `fcf_growth_rate` that produce a 5-year forecast, and `discount_rate=8.0`, `terminal_growth_rate=3.0`, **When** user requests DCF analysis, **Then** system returns Enterprise Value calculated as the sum of discounted FCFs plus discounted terminal value
+2. **Given** `starting_fcf` where `years=1` and `discount_rate=8.0`, **When** user requests DCF analysis, **Then** system returns Enterprise Value with single-year discount plus terminal value
+3. **Given** different `starting_fcf`, `fcf_growth_rate`, and `years`, **When** user submits each, **Then** system correctly calculates EV for each scenario independently
 
 ---
 
@@ -67,11 +67,11 @@ Some financial analysts may already have calculated the Terminal Value separatel
 
 ### Edge Cases
 
-- What happens when WACC is less than or equal to g? (Terminal growth rate must be strictly less than discount rate; system MUST reject with clear error)
-- What happens when FCF array is empty? (System MUST reject; at least one FCF value required)
-- What happens when FCF array contains negative values? (System MUST reject; all FCFs must be non-negative per assumption)
-- What happens when WACC or g are provided as percentages (5) vs. decimals (0.05)? (Input format must specify one format; mixed formats are ambiguous)
-- What happens when NetDebt is negative (company has net cash)? (Valid scenario; negative debt reduces equity value correctly)
+- What happens when `discount_rate` is less than or equal to `terminal_growth_rate`? (Terminal growth rate must be strictly less than discount rate; system MUST reject with clear error)
+- What happens when `years` is outside 1-30? (System MUST reject; at least 1 and at most 30 forecast years required)
+- What happens when computed FCF values contain negative numbers based on inputs? (System MUST validate that computed FCFs are non-negative and reject if not)
+- What happens when rates are provided as percentages vs decimals? (Inputs use percent format in this API — `8.0` means 8%)
+- What happens when `net_debt` is negative (company has net cash)? (Valid scenario; negative net debt increases equity value)
 - What happens when input precision exceeds system limits? (Specify rounding/precision handling in Success Criteria)
 
 ## Requirements *(mandatory)*
@@ -84,44 +84,44 @@ Some financial analysts may already have calculated the Terminal Value separatel
 
 #### Input Format & Variables
 
-- **FR-002**: System MUST accept Free Cash Flows (FCF) as an array of numeric values representing projected annual cash flows for a multi-year forecast period. Input format: `fcf` (JSON array of numbers, e.g., `[1000, 1100, 1200, 1300, 1400]`)
+- **FR-002**: System MUST accept a `starting_fcf` (float), `fcf_growth_rate` (float, percent), and `years` (int) to derive the forecasted annual FCF series. `starting_fcf` is the last historical year's FCF; the forecasted FCF for year t is `starting_fcf * (1 + fcf_growth_rate/100)^t`.
 
-- **FR-003**: System MUST accept Weighted Average Cost of Capital (WACC) as a decimal numeric value. Input format: `wacc` (single number as decimal, e.g., `0.10` for 10%, NOT `10`). WACC represents the discount rate applied to future cash flows.
+- **FR-003**: System MUST accept `discount_rate` (WACC) as a percent numeric value. Input format: `discount_rate` (single number in percent, e.g., `8.0` for 8%). Discount rate must be > 0 and greater than `terminal_growth_rate` if provided.
 
-- **FR-004**: System MUST accept terminal growth rate (g) as a decimal numeric value. Input format: `g` (single number as decimal, e.g., `0.03` for 3%, NOT `3`). Represents perpetual growth rate beyond the forecast period.
+- **FR-004**: System MUST accept `terminal_growth_rate` as a percent numeric value (optional). Input format: `terminal_growth_rate` (single number in percent, e.g., `3.0` for 3%). Represents perpetual growth beyond the forecast period.
 
-- **FR-005**: System MUST accept Net Debt as a numeric value (can be positive, zero, or negative). Input format: `net_debt` (single number, e.g., `2000000`). Net Debt = Total Debt - Cash & Equivalents. Positive values represent net debt; negative values represent net cash.
+- **FR-005**: System MUST accept `net_debt` as a numeric value (in billions, can be positive, zero, or negative). Input format: `net_debt` (single number, e.g., `-54.3`). Net Debt = Total Debt - Cash & Equivalents. Positive values represent net debt; negative values represent net cash.
 
-- **FR-006**: System MUST optionally accept pre-calculated Terminal Value as a numeric value. Input format: `terminal_value` (optional, single number). If provided, system uses this value; if omitted, system calculates it from FCF, WACC, and g. If explicitly set to 0, system honors the zero value in calculation.
+- **FR-006**: System MUST optionally accept pre-calculated `terminal_value` as a numeric value (in billions). If provided, system uses this value; if omitted and `terminal_growth_rate` is provided, system calculates TV using the Gordon Growth Model. If explicitly set to 0, system honors the zero value in calculation.
 
 #### Calculation Order & Formulas
 
-- **FR-007**: System MUST calculate Terminal Value using Gordon Growth Model if not explicitly provided. Formula:
+**FR-007**: System MUST calculate Terminal Value using Gordon Growth Model if not explicitly provided. Formula:
   ```
-  TV = (FCF[n] × (1 + g)) / (WACC - g)
+  TV = (LastForecastedFCF × (1 + g/100)) / ((discount_rate/100) - (g/100))
   ```
   Where:
-  - FCF[n] = the final (last) Free Cash Flow in the forecast array
-  - g = terminal growth rate (decimal)
-  - WACC = Weighted Average Cost of Capital (decimal)
+  - LastForecastedFCF = the FCF computed for the last forecast year (starting_fcf × (1 + fcf_growth_rate/100)^n when using growth, or the provided last-period value)
+  - g = terminal growth rate (percent)
+  - discount_rate = discount rate / WACC (percent)
 
-- **FR-008**: System MUST calculate the Present Value of each forecasted Free Cash Flow. Formula for each FCF:
+**FR-008**: System MUST calculate the Present Value of each forecasted Free Cash Flow. Formula for each FCF:
   ```
-  PV(FCF[t]) = FCF[t] / (1 + WACC)^t
+  PV(FCF[t]) = FCF[t] / (1 + discount_rate/100)^t
   ```
   Where:
-  - FCF[t] = Free Cash Flow in year t
+  - FCF[t] = Free Cash Flow in year t (computed from `starting_fcf` and `fcf_growth_rate`)
   - t = year number (1-indexed: year 1, 2, 3, ..., n)
-  - WACC = discount rate (decimal)
+  - discount_rate = discount rate (percent)
 
-- **FR-009**: System MUST calculate the Present Value of Terminal Value. Formula:
+**FR-009**: System MUST calculate the Present Value of Terminal Value. Formula:
   ```
-  PV(TV) = TV / (1 + WACC)^n
+  PV(TV) = TV / (1 + discount_rate/100)^n
   ```
   Where:
   - TV = Terminal Value (calculated per FR-007 or provided per FR-006)
-  - n = number of years in the forecast period (length of FCF array)
-  - WACC = discount rate (decimal)
+  - n = number of years in the forecast period (`years`)
+  - discount_rate = discount rate (percent)
 
 - **FR-010**: System MUST calculate Enterprise Value as the sum of all discounted cash flows and discounted terminal value. Formula:
   ```
@@ -142,10 +142,10 @@ Some financial analysts may already have calculated the Terminal Value separatel
 
 #### Validation & Constraints
 
-- **FR-013**: System MUST validate that FCF array length is between 1 and 30 elements (inclusive). If array length < 1 or > 30, system MUST reject with HTTP 400 error: "Forecast period must be between 1 and 30 years. Provided: {n} years"
+ - **FR-013**: System MUST validate that `years` is between 1 and 30 (inclusive). If `years` < 1 or > 30, system MUST reject with HTTP 400 error: "Forecast period must be between 1 and 30 years. Provided: {n} years"
 
 - **FR-014**: System MUST validate that WACC is strictly greater than terminal growth rate (g). If WACC ≤ g, system MUST reject the request with HTTP 400 error message: "WACC must be strictly greater than terminal growth rate g. Current: WACC={wacc}, g={g}"
-- **FR-015**: (Consolidated with FR-013) System MUST validate that FCF array length is between 1 and 30 elements (inclusive). If array length < 1 or > 30, system MUST reject with HTTP 400 error: "Forecast period must be between 1 and 30 years. Provided: {n} years"
+ - **FR-015**: (Consolidated with FR-013) System MUST validate that `years` is between 1 and 30 (inclusive). If `years` < 1 or > 30, system MUST reject with HTTP 400 error: "Forecast period must be between 1 and 30 years. Provided: {n} years"
 
 - **FR-016**: System MUST validate that all FCF values are non-negative (≥ 0). If any FCF < 0, system MUST reject with HTTP 400 error: "All Free Cash Flow values must be non-negative. Found negative value: FCF[{index}]={value}"
 
@@ -161,16 +161,15 @@ Some financial analysts may already have calculated the Terminal Value separatel
 
 #### Output Format
 
-- **FR-021**: System MUST return calculation results in JSON format with the following fields:
-  ```json
-  {
-    "enterprise_value": <number>,
-    "equity_value": <number>,
-    "terminal_value": <number>,
-    "discounted_cash_flows": [<number>, <number>, ...],
-    "discounted_terminal_value": <number>
-  }
-  ```
+ - **FR-021**: System MUST return calculation results in JSON format with the following fields:
+   ```json
+   {
+     "enterprise_value": <number>,
+     "equity_value": <number>,
+     "discounted_fcfs": [<number>, <number>, ...],
+     "discounted_terminal_value": <number>
+   }
+   ```
 
 - **FR-022**: System MUST round all monetary outputs (enterprise_value, equity_value, terminal_value, discounted_terminal_value, and each element in discounted_cash_flows array) to exactly 2 decimal places (standard currency precision).
 
@@ -185,8 +184,8 @@ Some financial analysts may already have calculated the Terminal Value separatel
 
 ### Key Entities
 
-- **DCF Request**: Input parameters (fcf array, wacc, g, net_debt, optional terminal_value) representing a single valuation scenario
-- **DCF Response**: Output object containing calculated values (enterprise_value, equity_value, terminal_value, discounted_cash_flows, discounted_terminal_value)
+- **DCF Request**: Input parameters (`starting_fcf`, `fcf_growth_rate`, `years`, `discount_rate`, `terminal_growth_rate` optional, `net_debt`, optional `terminal_value`) representing a single valuation scenario. Cash units: billions; rates: percent.
+- **DCF Response**: Output object containing calculated values (`enterprise_value`, `equity_value`, `discounted_fcfs`, `discounted_terminal_value`)
 - **Valuation Scenario**: A unique combination of financial inputs that produces a specific EV and Equity Value for analysis
 
 ## Success Criteria *(mandatory)*

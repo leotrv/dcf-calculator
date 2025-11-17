@@ -107,13 +107,15 @@ INFO:     Application startup complete
 1. Open http://localhost:8000/docs in your browser
 2. Click on **POST /dcf/calculate**
 3. Click **Try it out**
-4. In the Request body, paste this example:
+4. In the Request body, paste this example (units: cash in billions, rates in percent):
    ```json
    {
-     "fcf": [1000, 1100, 1200, 1300, 1400],
-     "wacc": 0.10,
-     "g": 0.03,
-     "net_debt": 2000000
+     "starting_fcf": 1.0,
+     "fcf_growth_rate": 5.0,
+     "years": 5,
+     "discount_rate": 8.0,
+     "terminal_growth_rate": 3.0,
+     "net_debt": 0.2
    }
    ```
 5. Click **Execute**
@@ -125,21 +127,22 @@ INFO:     Application startup complete
 curl -X POST "http://localhost:8000/dcf/calculate" \
   -H "Content-Type: application/json" \
   -d '{
-    "fcf": [1000, 1100, 1200, 1300, 1400],
-    "wacc": 0.10,
-    "g": 0.03,
-    "net_debt": 2000000
+    "starting_fcf": 1.0,
+    "fcf_growth_rate": 5.0,
+    "years": 5,
+    "discount_rate": 8.0,
+    "terminal_growth_rate": 3.0,
+    "net_debt": 0.2
   }'
 ```
 
-Expected response:
+Expected response (values shown in billions):
 ```json
 {
-  "enterprise_value": 5234567.89,
-  "equity_value": 3234567.89,
-  "terminal_value": 15000000.00,
-  "discounted_cash_flows": [909.09, 908.26, 901.58, 889.00, 868.44],
-  "discounted_terminal_value": 9294862.05
+  "enterprise_value": 5.23456789,
+  "equity_value": 3.23456789,
+  "discounted_fcfs": [0.90909, 0.90826, 0.90158, 0.88900, 0.86844],
+  "discounted_terminal_value": 9.29486205
 }
 ```
 
@@ -151,10 +154,12 @@ import requests
 
 url = "http://localhost:8000/dcf/calculate"
 payload = {
-    "fcf": [1000, 1100, 1200, 1300, 1400],
-    "wacc": 0.10,
-    "g": 0.03,
-    "net_debt": 2000000
+  "starting_fcf": 1.0,
+  "fcf_growth_rate": 5.0,
+  "years": 5,
+  "discount_rate": 8.0,
+  "terminal_growth_rate": 3.0,
+  "net_debt": 0.2
 }
 
 response = requests.post(url, json=payload)

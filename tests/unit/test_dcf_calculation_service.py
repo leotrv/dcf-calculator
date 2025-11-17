@@ -4,7 +4,16 @@ import pytest
 
 
 def test_single_year_pv_calculation():
-    req = DCFRequest(fcf=[100.0], discount_rate=0.10, net_debt=0.0)
+    # The current `DCFRequest` model uses `starting_fcf` (last historical year),
+    # `fcf_growth_rate` (percent) and `years`. To produce a single forecasted
+    # FCF of 100.0 in year 1 with a 10% growth rate, set `starting_fcf` to 100/1.1.
+    req = DCFRequest(
+        starting_fcf=100.0 / 1.10,
+        fcf_growth_rate=10.0,
+        years=1,
+        discount_rate=10.0,
+        net_debt=0.0,
+    )
     svc = DCFCalculationService()
     res = svc.calculate_dcf(req)
 

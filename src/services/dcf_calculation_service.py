@@ -15,19 +15,22 @@ class DCFCalculationService:
 
     Rules:
     - Uses python floats for internal computation for speed.
-    - Business validation that depends on multiple fields (e.g., discount_rate > terminal_growth_rate)
-      is enforced here and raises ValueError with an error code prefix (e.g., "WACC_LE_G: ...").
-    - Returns raw floats; rounding to 2 decimals is performed at serialization in `DCFResponse`.
+        - Business validation that depends on multiple fields (e.g., discount_rate > terminal_growth_rate)
+            is enforced in the `DCFRequest` model validators and will raise `ValueError` with an
+            error code prefix (e.g., "G_GTE_DISCOUNT_RATE: ...").
+        - `starting_fcf` semantics: the model's `starting_fcf` represents the last historical year's
+            FCF. The first forecasted FCF (FCF1) is `starting_fcf * (1 + fcf_growth_rate)` as used
+            when building the FCF list.
+        - Terminal value: computed by the `DCFRequest` model (Gordon Growth). The service treats
+            an explicit `None` terminal value as "no terminal value"; a numeric `0.0` is considered
+            a valid terminal value of zero.
+        - Returns raw floats; rounding to 2 decimals is performed at serialization in `DCFResponse`.
     """
 
     def calculate_dcf(self, req: DCFRequest) -> DCFResult:
-        # Cross-field business validation
-        wacc = float(req.discount_rate)
-        g = req.terminal_growth_rate
-        if g is not None and wacc <= float(g):
-            raise ValueError('WACC_LE_G: discount_rate must be strictly greater than terminal_growth_rate')
-
-        fcf_list = [float(x) for x in req.fcf]
+        # Cross-field business validation is performed in DCFRequest model validators
+        wacc = req.discount_rate / 100.0
+        fcf_list = req.fcf
         if len(fcf_list) == 0:
             raise ValueError('FCF_LENGTH: fcf list must contain at least 1 item')
 
@@ -38,24 +41,15 @@ class DCFCalculationService:
 
         pv_fcfs = sum(discounted_fcfs)
 
-        # Terminal value: provided explicit TV takes precedence
-        if req.terminal_value is not None:
-            tv = float(req.terminal_value)
-        elif g is not None:
-            last_fcf = fcf_list[-1]
-            denom = (wacc - float(g))
-            if denom == 0:
-                raise ValueError('DIV_BY_ZERO: discount_rate equals terminal_growth_rate')
-            tv = last_fcf * (1.0 + float(g)) / denom
-        else:
-            tv = 0.0
+        # Terminal value is computed by DCFRequest model
+        tv = req.terminal_value
 
         discounted_tv = 0.0
-        if tv:
+        if tv is not None:
             discounted_tv = tv / ((1.0 + wacc) ** len(fcf_list))
 
         enterprise_value = pv_fcfs + discounted_tv
-        equity_value = enterprise_value - (float(req.net_debt) if req.net_debt is not None else 0.0)
+        equity_value = enterprise_value - (req.net_debt or 0.0)
 
         return DCFResult(
             enterprise_value=enterprise_value,

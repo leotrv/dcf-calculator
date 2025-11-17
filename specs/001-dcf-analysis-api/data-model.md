@@ -6,86 +6,73 @@
 
 ## Request Model: DCFRequest
 
-**Purpose**: Represents a single DCF calculation request
+**Purpose**: Represents a single DCF calculation request (using `starting_fcf` + growth to derive forecasts)
 
 **Fields**:
 
 | Field | Type | Required | Constraints | Description |
 |-------|------|----------|-------------|-------------|
-| `fcf` | `list[float]` | Yes | Non-empty, 1-30 elements, all ≥ 0 | Array of projected annual free cash flows. Values must be non-negative. Length determines forecast period. |
-| `wacc` | `float` | Yes | > 0 (positive), < g constraint checked in service | Weighted Average Cost of Capital as decimal (e.g., 0.10 for 10%). Used as discount rate. |
-| `g` | `float` | Yes | ≥ 0 (non-negative), WACC > g constraint checked in service | Terminal growth rate as decimal (e.g., 0.03 for 3%). Represents perpetual growth beyond forecast. |
-| `net_debt` | `float` | Yes | Any numeric value (positive, zero, or negative) | Net Debt = Total Debt - Cash. Used to convert EV to Equity Value. Can be negative (net cash position). |
-| `terminal_value` | `float` | No | Optional; if provided, any numeric value | Pre-calculated Terminal Value. If omitted, system calculates TV = (FCF[-1] × (1 + g)) / (WACC - g). If provided (including 0), system uses this value as-is. |
+| `starting_fcf` | `float` | Yes | ≥ 0 | Starting free cash flow (last historical year). Units: billions. |
+| `fcf_growth_rate` | `float` | Yes | any real number (percent) | Forecast growth rate in percent (e.g., `8.0` = 8%). Used to grow `starting_fcf` into multi-year forecasts. |
+| `years` | `int` | Yes | 1-30 inclusive | Number of forecast years to compute. |
+| `discount_rate` | `float` | Yes | > 0 (percent) and > `terminal_growth_rate` if provided | Discount rate / WACC expressed in percent (e.g., `8.0` = 8%). |
+| `terminal_growth_rate` | `float` | No | ≥ 0 (percent) | Terminal growth rate in percent (e.g., `3.0` = 3%). If omitted, no terminal value will be used unless `terminal_value` is provided. |
+| `net_debt` | `float` | No | any numeric value (can be negative) | Net debt in billions. Positive = net debt; negative = net cash. |
+| `terminal_value` | `float` | No | any numeric value (can be zero) | Optional pre-calculated terminal value in billions. If provided, the service will use it as-is. |
 
 **Validation Rules**:
 
-1. **FCF Array Validation** (Pydantic + service layer):
-    - Length must be between 1 and 30 elements (inclusive). If outside this range, reject with HTTP 400: `FORECAST_PERIOD_OUT_OF_RANGE`.
-    - All elements must be ≥ 0 (HTTP 400: `NEGATIVE_FCF_VALUE`)
-    - Type: list of numbers (Pydantic enforces)
+1. **Years Validation**:
+   - `years` must be between 1 and 30 inclusive. If outside this range, reject with HTTP 400: `FORECAST_PERIOD_OUT_OF_RANGE`.
 
-2. **WACC Validation** (Pydantic + service layer):
-   - Must be numeric (Pydantic enforces)
-   - Must be > 0 (HTTP 400: INVALID_WACC)
-   - Must be > g (service layer, HTTP 400: WACC_LE_G)
+2. **Starting FCF / Computed FCFs Validation**:
+   - `starting_fcf` must be ≥ 0. Computed forecast values (starting_fcf grown by `fcf_growth_rate`) must be non-negative; if any computed FCF < 0, reject with HTTP 400: `NEGATIVE_FCF_VALUE`.
 
-3. **Growth Rate (g) Validation** (Pydantic + service layer):
-   - Must be numeric (Pydantic enforces)
-   - Must be ≥ 0 (HTTP 400: INVALID_G)
-   - Must be < WACC (service layer, HTTP 400: WACC_LE_G)
+3. **Discount Rate Validation**:
+   - `discount_rate` must be > 0. If invalid, reject with HTTP 400: `INVALID_DISCOUNT_RATE`.
 
-4. **NetDebt Validation** (Pydantic):
-   - Must be numeric (HTTP 400: INVALID_NETDEBT if type error)
-   - Can be positive, zero, or negative (all valid)
+4. **Terminal Growth Rate Validation**:
+   - If provided, `terminal_growth_rate` must be ≥ 0 and strictly less than `discount_rate`. Otherwise, reject with HTTP 400: `WACC_LE_G` or `INVALID_G` as appropriate.
 
-5. **Terminal Value Validation** (Pydantic):
-   - If provided, must be numeric
-   - If 0, valid and honored (per clarification)
-   - If negative, valid (represents declining terminal value scenario)
+5. **Net Debt Validation**:
+   - `net_debt` may be negative to represent net cash; no non-negativity requirement.
 
-**Pydantic Model Definition**:
+**Pydantic Model Definition (conceptual)**:
 
 ```python
 from pydantic import BaseModel, field_validator
 
 class DCFRequest(BaseModel):
-    fcf: list[float]
-    wacc: float
-    g: float
-    net_debt: float
+    starting_fcf: float
+    fcf_growth_rate: float  # percent, e.g. 8.0
+    years: int
+    discount_rate: float    # percent, e.g. 8.0
+    terminal_growth_rate: float | None = None  # percent
+    net_debt: float | None = None
     terminal_value: float | None = None
-    
-    @field_validator('fcf')
-    @classmethod
-    def validate_fcf(cls, v):
-        if not v:
-            raise ValueError("Free Cash Flow array cannot be empty")
-        if len(v) > 30:
-            raise ValueError(f"Forecast period exceeds 30 years. Provided: {len(v)} years")
-        if any(x < 0 for x in v):
-            idx = next(i for i, x in enumerate(v) if x < 0)
-            raise ValueError(f"All FCF values must be non-negative. Found: FCF[{idx}]={v[idx]}")
-        return v
-    
-    @field_validator('wacc')
-    @classmethod
-    def validate_wacc(cls, v):
-        if v <= 0:
-            raise ValueError(f"WACC must be positive. Provided: {v}")
-        return v
-    
-    @field_validator('g')
-    @classmethod
-    def validate_g(cls, v):
+
+    @field_validator('starting_fcf')
+    def validate_starting_fcf(cls, v):
         if v < 0:
-            raise ValueError(f"Terminal growth rate must be non-negative. Provided: {v}")
+            raise ValueError('STARTING_FCF_NEGATIVE')
         return v
-    
-    @field_validator('net_debt')
-    @classmethod
-    def validate_net_debt(cls, v):
-        # Any numeric value is valid (positive, zero, negative)
+
+    @field_validator('years')
+    def validate_years(cls, v):
+        if not (1 <= v <= 30):
+            raise ValueError('YEARS_LENGTH')
+        return v
+
+    @field_validator('discount_rate')
+    def validate_discount_rate(cls, v):
+        if v <= 0:
+            raise ValueError('INVALID_DISCOUNT_RATE')
+        return v
+
+    @field_validator('terminal_growth_rate')
+    def validate_g(cls, v):
+        if v is not None and v < 0:
+            raise ValueError('INVALID_G')
         return v
 ```
 
@@ -99,15 +86,14 @@ class DCFRequest(BaseModel):
 
 | Field | Type | Format | Description |
 |-------|------|--------|-------------|
-| `enterprise_value` | `float` | 2 decimal places | Sum of all discounted cash flows and discounted terminal value. Main valuation metric. |
-| `equity_value` | `float` | 2 decimal places | EV - NetDebt. Value available to equity holders. |
-| `terminal_value` | `float` | 2 decimal places | Terminal Value used in calculation (either provided or calculated). |
-| `discounted_cash_flows` | `list[float]` | 2 decimal places each | Array of present values for each year's FCF. Length matches input FCF array. |
-| `discounted_terminal_value` | `float` | 2 decimal places | PV(TV) = TV / (1 + WACC)^n. Present value of terminal value component. |
+| `enterprise_value` | `float` | 2 decimal places | Sum of all discounted cash flows and discounted terminal value. Units: billions. |
+| `equity_value` | `float` | 2 decimal places | EV - net_debt. Units: billions. |
+| `discounted_fcfs` | `list[float]` | 2 decimal places each | Array of present values for each forecasted FCF. Length equals `years`.
+| `discounted_terminal_value` | `float` | 2 decimal places | PV(TV) = TV / (1 + discount_rate/100)^n. Units: billions.
 
 **Constraints**:
-- All monetary values rounded to exactly 2 decimal places
-- Array elements in discounted_cash_flows also rounded to 2 decimals
+- All monetary values rounded to exactly 2 decimal places on serialization
+- Array elements in `discounted_fcfs` also rounded to 2 decimals
 - Values can be negative (edge cases allowed per spec)
 
 **Pydantic Model Definition**:
@@ -116,7 +102,7 @@ class DCFRequest(BaseModel):
 from decimal import Decimal, ROUND_HALF_UP
 
 def round_currency(value: float) -> float:
-    """Round to 2 decimal places using banker's rounding"""
+    """Round to 2 decimal places using HALF_UP rounding"""
     return float(
         Decimal(str(value)).quantize(
             Decimal('0.01'),
@@ -127,8 +113,7 @@ def round_currency(value: float) -> float:
 class DCFResponse(BaseModel):
     enterprise_value: float
     equity_value: float
-    terminal_value: float
-    discounted_cash_flows: list[float]
+    discounted_fcfs: list[float]
     discounted_terminal_value: float
     
     def model_dump(self, **kwargs):
@@ -136,10 +121,9 @@ class DCFResponse(BaseModel):
         data = super().model_dump(**kwargs)
         data['enterprise_value'] = round_currency(data['enterprise_value'])
         data['equity_value'] = round_currency(data['equity_value'])
-        data['terminal_value'] = round_currency(data['terminal_value'])
         data['discounted_terminal_value'] = round_currency(data['discounted_terminal_value'])
-        data['discounted_cash_flows'] = [
-            round_currency(x) for x in data['discounted_cash_flows']
+        data['discounted_fcfs'] = [
+            round_currency(x) for x in data.get('discounted_fcfs', [])
         ]
         return data
 ```

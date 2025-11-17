@@ -5,10 +5,14 @@ client = TestClient(app)
 
 
 def test_post_dcf_calculate_basic():
+    # Use the current request model: `starting_fcf` is the last historical FCF
+    # Forecasted FCF for year 1 = starting_fcf * (1 + fcf_growth_rate)
     payload = {
-        "fcf": [100.0, 110.0, 120.0],
-        "discount_rate": 0.10,
-        "terminal_growth_rate": 0.02,
+        "starting_fcf": 100.0,
+        "fcf_growth_rate": 10.0,  # percent (10% -> growth to 110)
+        "years": 3,
+        "discount_rate": 10.0,    # percent (10% WACC)
+        "terminal_growth_rate": 2.0,
         "net_debt": 50.0
     }
     r = client.post('/dcf/calculate', json=payload)
