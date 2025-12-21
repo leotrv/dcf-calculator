@@ -1,0 +1,178 @@
+openapi: 3.0.0
+info:
+  title: Auto-DCF Valuation API
+  description: Automatic DCF valuation endpoint using yfinance data
+  version: 0.1.0
+  contact:
+    name: DCF Agent Team
+
+servers:
+  - url: http://localhost:8000
+    description: Local development server
+  - url: https://api.example.com
+    description: Production server (placeholder)
+
+paths:
+  /dcf/auto-calculate:
+    post:
+      summary: Calculate DCF valuation from stock ticker
+      description: |
+        Automatically fetches financial data from yfinance for a given stock ticker,
+        derives DCF parameters (FCF growth, WACC, etc.), and returns a valuation.
+        Returns the same DCFResponse structure as the manual /dcf/calculate endpoint.
+      operationId: calculateAutoDCF
+      tags:
+        - DCF Valuation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AutoDCFRequest'
+            examples:
+              apple:
+                summary: Apple Inc.
+                value:
+                  ticker: AAPL
+              microsoft:
+                summary: Microsoft Corp.
+                value:
+                  ticker: MSFT
+      responses:
+        '200':
+          description: Successful valuation calculation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DCFResponse'
+              examples:
+                success:
+                  summary: Example valuation result
+                  value:
+                    enterprise_value: 2500.50
+                    equity_value: 2400.30
+                    value_per_share: 150.20
+                    discounted_fcfs: [100.00, 110.00, 121.00, 133.10, 146.41]
+                    discounted_terminal_value: 1200.50
+        '400':
+          description: Bad request - invalid ticker or insufficient data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                tickerNotFound:
+                  summary: Ticker not found
+                  value:
+                    detail:
+                      error: "TICKER_NOT_FOUND: No data available for ticker 'INVALID123'"
+                      error_code: TICKER_NOT_FOUND
+                insufficientHistory:
+                  summary: Insufficient historical data
+                  value:
+                    detail:
+                      error: "INSUFFICIENT_HISTORY: Less than 1 year of historical data for 'NEWCO'"
+                      error_code: INSUFFICIENT_HISTORY
+                invalidTicker:
+                  summary: Invalid ticker format
+                  value:
+                    detail:
+                      error: "INVALID_TICKER: Ticker must be non-empty alphanumeric string"
+                      error_code: INVALID_TICKER
+        '503':
+          description: Service unavailable - yfinance data fetch timeout or network error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                timeout:
+                  summary: Network timeout
+                  value:
+                    detail:
+                      error: "YFINANCE_ERROR: Unable to fetch data (timeout after 10s)"
+                      error_code: YFINANCE_ERROR
+
+components:
+  schemas:
+    AutoDCFRequest:
+      type: object
+      required:
+        - ticker
+      properties:
+        ticker:
+          type: string
+          minLength: 1
+          maxLength: 5
+          pattern: '^[A-Za-z]+$'
+          description: Stock ticker symbol (e.g., "AAPL", "MSFT")
+          example: AAPL
+      additionalProperties: false
+
+    DCFResponse:
+      type: object
+      required:
+        - enterprise_value
+        - equity_value
+        - discounted_fcfs
+        - discounted_terminal_value
+      properties:
+        enterprise_value:
+          type: number
+          format: double
+          description: Enterprise value (sum of discounted cash flows + terminal value), in billions
+          example: 2500.50
+        equity_value:
+          type: number
+          format: double
+          description: Equity value (enterprise value - net debt), in billions
+          example: 2400.30
+        value_per_share:
+          type: number
+          format: double
+          nullable: true
+          description: Value per share (equity value / shares outstanding). Null if shares not available.
+          example: 150.20
+        discounted_fcfs:
+          type: array
+          items:
+            type: number
+            format: double
+          description: Discounted free cash flows for each forecast year, in billions
+          example: [100.00, 110.00, 121.00, 133.10, 146.41]
+        discounted_terminal_value:
+          type: number
+          format: double
+          description: Present value of terminal (perpetuity) value, in billions
+          example: 1200.50
+
+    ErrorResponse:
+      type: object
+      required:
+        - detail
+      properties:
+        detail:
+          type: object
+          required:
+            - error
+            - error_code
+          properties:
+            error:
+              type: string
+              description: Human-readable error message with error code prefix
+              example: "TICKER_NOT_FOUND: No data available for ticker 'INVALID123'"
+            error_code:
+              type: string
+              enum:
+                - INVALID_TICKER
+                - TICKER_NOT_FOUND
+                - INSUFFICIENT_HISTORY
+                - MISSING_FIELD
+                - YFINANCE_ERROR
+                - BUSINESS_ERROR
+              description: Machine-readable error code for handling
+              example: TICKER_NOT_FOUND
+
+tags:
+  - name: DCF Valuation
+    description: Operations related to DCF valuation calculations
