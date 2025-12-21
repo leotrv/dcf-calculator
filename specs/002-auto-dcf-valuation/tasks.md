@@ -58,13 +58,13 @@ Phase 5: Polish & Cross-Cutting Concerns
 
 ### Create YFinance Service Base
 
-- [ ] T006 Create service file `src/services/yfinance_service.py` with class `YFinanceService` (empty methods)
-- [ ] T007 [P] Create method stub `YFinanceService.extract_dcf_inputs(ticker: str) -> Dict` placeholder
-- [ ] T008 [P] Create validation method `YFinanceService.validate_ticker(ticker: str) -> bool` (non-empty, alphanumeric)
+- [x] T006 Create service file `src/services/yfinance_service.py` with class `YFinanceService` (empty methods)
+- [x] T007 [P] Create method stub `YFinanceService.extract_dcf_inputs(ticker: str) -> Dict` placeholder
+- [x] T008 [P] Create validation method `YFinanceService.validate_ticker(ticker: str) -> bool` (non-empty, alphanumeric)
 
 ### Endpoint Registration
 
-- [ ] T009 Update `src/api/controllers.py` to add route `@router.post('/auto-calculate', response_model=DCFResponse)` with placeholder implementation
+- [x] T009 Update `src/api/controllers.py` to add route `@router.post('/auto-calculate', response_model=DCFResponse)` with placeholder implementation
 
 ---
 
@@ -72,30 +72,30 @@ Phase 5: Polish & Cross-Cutting Concerns
 
 ### 3.1 Unit Tests (TDD Red Phase)
 
-- [ ] T010 [US1] Write failing unit test: `test_extract_dcf_inputs_valid_ticker_returns_dict` - expects valid yfinance data extraction for AAPL
-- [ ] T011 [US1] Write failing unit test: `test_extract_dcf_inputs_calculates_fcf_correctly` - expects FCF = Operating CF - CapEx
-- [ ] T012 [US1] Write failing unit test: `test_extract_dcf_inputs_calculates_fcf_5yr_cagr` - expects CAGR calculation from quarterly history
-- [ ] T013 [US1] Write failing unit test: `test_extract_dcf_inputs_estimates_wacc_via_capm` - expects WACC = risk_free + (beta × market_premium)
-- [ ] T014 [US1] Write failing unit test: `test_extract_dcf_inputs_applies_growth_rate_cap` - expects FCF growth capped at min(2x CAGR, 20%)
-- [ ] T015 [US1] Write failing unit test: `test_convert_yfinance_to_dcf_request` - expects populated DCFRequest with correct field mapping
-- [ ] T016 [US1] Write failing unit test: `test_auto_dcf_endpoint_returns_dcf_response` - expects endpoint returns DCFResponse with correct structure
+- [x] T010 [US1] Write failing unit test: `test_extract_dcf_inputs_valid_ticker_returns_dict` - expects valid yfinance data extraction for AAPL
+- [x] T011 [US1] Write failing unit test: `test_extract_dcf_inputs_calculates_fcf_correctly` - expects FCF = Operating CF - CapEx
+- [x] T012 [US1] Write failing unit test: `test_extract_dcf_inputs_calculates_fcf_5yr_cagr` - expects CAGR calculation from quarterly history
+- [x] T013 [US1] Write failing unit test: `test_extract_dcf_inputs_estimates_wacc_via_capm` - expects WACC = risk_free + (beta × market_premium)
+- [x] T014 [US1] Write failing unit test: `test_extract_dcf_inputs_applies_growth_rate_cap` - expects FCF growth capped at min(2x CAGR, 20%)
+- [x] T015 [US1] Write failing unit test: `test_convert_yfinance_to_dcf_request` - expects populated DCFRequest with correct field mapping
+- [x] T016 [US1] Write failing unit test: `test_auto_dcf_endpoint_returns_dcf_response` - expects endpoint returns DCFResponse with correct structure
 
 ### 3.2 Service Implementation (TDD Green & Refactor)
 
-- [ ] T017 [US1] Implement `YFinanceService.fetch_yfinance_ticker(ticker: str)` - fetch Ticker object with 10s timeout, return or raise validation error
-- [ ] T018 [US1] Implement `YFinanceService.extract_quarterly_cashflow(ticker)` - extract operating CF, CapEx; calculate FCF for each quarter
-- [ ] T019 [US1] Implement `YFinanceService.extract_quarterly_balance_sheet(ticker)` - extract total debt, cash, shares outstanding (latest)
-- [ ] T020 [US1] Implement `YFinanceService.calculate_fcf_growth_rate(fcf_history: List[float]) -> float` - calculate 5-year CAGR, cap at 2x or 20%
-- [ ] T021 [US1] Implement `YFinanceService.estimate_discount_rate(ticker) -> float` - fetch beta, apply CAPM (risk_free=4.5%, market_premium=6%), return WACC
-- [ ] T022 [US1] Implement `YFinanceService.extract_dcf_inputs(ticker: str) -> DCFRequest` - orchestrate all extraction methods, return populated DCFRequest
-- [ ] T023 [US1] Implement endpoint logic: `POST /dcf/auto-calculate` calls `YFinanceService.extract_dcf_inputs()`, invokes `DCFCalculationService.calculate_dcf()`, returns `DCFResponse`
-- [ ] T024 [US1] [P] Write integration test: `test_auto_dcf_endpoint_valid_ticker_aapl` - POST with valid ticker, assert 200 response with DCFResponse structure
+- [x] T017 [US1] Implement `YFinanceService.fetch_yfinance_ticker(ticker: str)` - fetch Ticker object with 10s timeout, return or raise validation error
+- [x] T018 [US1] Implement `YFinanceService.extract_quarterly_cashflow(ticker)` - extract operating CF, CapEx; calculate FCF for each quarter
+- [x] T019 [US1] Implement `YFinanceService.extract_quarterly_balance_sheet(ticker)` - extract total debt, cash, shares outstanding (latest)
+- [x] T020 [US1] Implement `YFinanceService.calculate_fcf_growth_rate(fcf_history: List[float]) -> float` - calculate 5-year CAGR, cap at 2x or 20%
+- [x] T021 [US1] Implement `YFinanceService.estimate_discount_rate(ticker) -> float` - fetch beta, apply CAPM (risk_free=4.5%, market_premium=6%), return WACC
+- [x] T022 [US1] Implement `YFinanceService.extract_dcf_inputs(ticker: str) -> DCFRequest` - orchestrate all extraction methods, return populated DCFRequest
+- [x] T023 [US1] Implement endpoint logic: `POST /dcf/auto-calculate` calls `YFinanceService.extract_dcf_inputs()`, invokes `DCFCalculationService.calculate_dcf()`, returns `DCFResponse`
+- [x] T024 [US1] [P] Write integration test: `test_auto_dcf_endpoint_valid_ticker_aapl` - POST with valid ticker, assert 200 response with DCFResponse structure
 
 ### 3.3 Validation & Edge Cases (US1)
 
-- [ ] T025 [US1] Handle missing beta: Use default 1.0 if unavailable; unit test `test_estimate_discount_rate_missing_beta_uses_default`
-- [ ] T026 [US1] Handle negative FCF: Flag for user awareness (logging); unit test `test_extract_dcf_inputs_negative_fcf_logged`
-- [ ] T027 [US1] Pass existing endpoint tests: Run `pytest tests/integration/test_dcf_api_endpoints.py::TestAutoDCFEndpoint::test_auto_dcf_endpoint_valid_ticker_aapl` - must pass
+- [x] T025 [US1] Handle missing beta: Use default 1.0 if unavailable; unit test `test_estimate_discount_rate_missing_beta_uses_default`
+- [x] T026 [US1] Handle negative FCF: Flag for user awareness (logging); unit test `test_extract_dcf_inputs_negative_fcf_logged`
+- [x] T027 [US1] Pass existing endpoint tests: Run `pytest tests/integration/test_dcf_api_endpoints.py::TestAutoDCFEndpoint::test_auto_dcf_endpoint_valid_ticker_aapl` - must pass
 
 ---
 
