@@ -53,9 +53,11 @@ class DCFCalculationService:
         equity_value = enterprise_value - (req.net_debt or 0.0)
 
         # Calculate value per share if number_of_shares is provided
+        # equity_value is in billions, number_of_shares is in actual shares
+        # value_per_share should be in dollars: (equity_value_billions * 1e9) / shares
         value_per_share = None
         if req.number_of_shares and req.number_of_shares > 0:
-            value_per_share = equity_value / req.number_of_shares
+            value_per_share = (equity_value * 1e9) / req.number_of_shares
 
         return DCFResult(
             enterprise_value=enterprise_value,
