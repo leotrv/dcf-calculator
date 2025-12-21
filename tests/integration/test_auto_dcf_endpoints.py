@@ -1,6 +1,8 @@
 """Integration tests for auto-DCF endpoint."""
 import pytest
 from fastapi.testclient import TestClient
+from unittest.mock import Mock, patch
+import pandas as pd
 from src.main import app
 
 
@@ -12,8 +14,28 @@ class TestAutoDCFEndpoint:
         """FastAPI test client."""
         return TestClient(app)
 
-    def test_auto_dcf_endpoint_valid_ticker_aapl(self, client):
+    @patch('src.services.yfinance_service.yf')
+    def test_auto_dcf_endpoint_valid_ticker_aapl(self, mock_yf, client):
         """Test endpoint with valid ticker returns DCFResponse structure."""
+        # Mock yfinance Ticker
+        ticker = Mock()
+        ticker.quarterly_cashflow = {
+            "Operating Cash Flow": pd.Series([100e9, 98e9, 95e9, 93e9, 90e9]),
+            "Capital Expenditure": pd.Series([10e9, 10e9, 10e9, 10e9, 10e9]),
+        }
+        ticker.quarterly_balance_sheet = {
+            "Total Debt": pd.Series([50e9]),
+            "Cash And Cash Equivalents": pd.Series([20e9]),
+        }
+        ticker.info = {
+            "symbol": "AAPL",
+            "beta": 1.2,
+            "sharesOutstanding": 2500.0,
+            "marketCap": 2000000000000,
+        }
+        
+        mock_yf.Ticker.return_value = ticker
+        
         response = client.post(
             "/dcf/auto-calculate",
             json={"ticker": "AAPL"}

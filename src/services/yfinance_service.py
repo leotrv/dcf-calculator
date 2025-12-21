@@ -1,6 +1,6 @@
 """YFinance data extraction service for auto DCF calculations."""
 import logging
-from typing import Optional
+from typing import Optional, Tuple
 import yfinance as yf
 from src.models.request import DCFRequest
 
@@ -14,6 +14,14 @@ TERMINAL_GROWTH_RATE = 0.025  # 2.5%
 FCF_GROWTH_CAP = 0.20  # 20%
 NETWORK_TIMEOUT = 10  # seconds
 MINIMUM_DATA_QUARTERS = 4  # 1 year
+
+
+class ValidationError(Exception):
+    """Custom exception for validation errors."""
+    def __init__(self, error_code: str, message: str):
+        self.error_code = error_code
+        self.message = message
+        super().__init__(f"{error_code}: {message}")
 
 
 class YFinanceService:
@@ -32,6 +40,50 @@ class YFinanceService:
             return False
         return ticker.isalpha()
     
+    def validate_ticker_exists(self, ticker: str) -> Tuple[bool, Optional[dict]]:
+        """Check if ticker exists in yfinance and return its info.
+        
+        Args:
+            ticker: Stock ticker symbol.
+            
+        Returns:
+            Tuple of (exists: bool, info: dict or None)
+            
+        Raises:
+            ValidationError: If yfinance fails to fetch the ticker.
+        """
+        try:
+            yf_ticker = yf.Ticker(ticker)
+            info = yf_ticker.info
+            
+            # Check if ticker exists
+            if not info or 'symbol' not in info:
+                return False, None
+            
+            return True, info
+        except Exception as e:
+            logger.error(f"YFINANCE_ERROR: Failed to fetch ticker {ticker}: {str(e)}")
+            raise ValidationError("YFINANCE_ERROR", f"Failed to fetch ticker {ticker}: {str(e)}")
+    
+    def validate_historical_data(self, cash_flow: dict) -> bool:
+        """Check if cash flow data meets minimum history requirement.
+        
+        Args:
+            cash_flow: Quarterly cash flow dictionary from yfinance.
+            
+        Returns:
+            True if sufficient data; False otherwise.
+        """
+        if cash_flow is None:
+            return False
+        
+        ocf = cash_flow.get('Operating Cash Flow')
+        if ocf is None:
+            return False
+        
+        col_count = len(ocf) if hasattr(ocf, '__len__') else 0
+        return col_count >= MINIMUM_DATA_QUARTERS
+    
     def extract_dcf_inputs(self, ticker: str) -> DCFRequest:
         """Extract financial data and create DCFRequest.
         
@@ -42,34 +94,28 @@ class YFinanceService:
             DCFRequest object with extracted inputs.
             
         Raises:
-            ValueError: If ticker is invalid or data is insufficient.
+            ValidationError: If ticker is invalid or data is insufficient.
         """
         # Validate ticker format
         if not self.validate_ticker(ticker):
-            raise ValueError(f"INVALID_TICKER: '{ticker}' is not a valid ticker symbol")
+            raise ValidationError("INVALID_TICKER", f"'{ticker}' is not a valid ticker symbol")
         
-        # Fetch yfinance data
-        try:
-            yf_ticker = yf.Ticker(ticker, timeout=NETWORK_TIMEOUT)
-            info = yf_ticker.info
-            
-            # Check if ticker exists
-            if not info or 'symbol' not in info:
-                raise ValueError(f"TICKER_NOT_FOUND: '{ticker}' not found in yfinance")
-        except Exception as e:
-            logger.error(f"YFINANCE_ERROR: Failed to fetch ticker {ticker}: {str(e)}")
-            raise ValueError(f"YFINANCE_ERROR: {str(e)}")
+        # Fetch and validate ticker exists
+        exists, info = self.validate_ticker_exists(ticker)
+        if not exists:
+            raise ValidationError("TICKER_NOT_FOUND", f"'{ticker}' not found in yfinance")
         
-        # Extract historical cash flow data
+        # Extract financial data
         try:
+            yf_ticker = yf.Ticker(ticker)
             cash_flow = yf_ticker.quarterly_cashflow
             
             # Check minimum data requirement
-            col_count = len(cash_flow.get("Operating Cash Flow", [])) if cash_flow else 0
-            if col_count < MINIMUM_DATA_QUARTERS:
-                raise ValueError(
-                    f"INSUFFICIENT_HISTORY: '{ticker}' has insufficient data "
-                    f"(requires {MINIMUM_DATA_QUARTERS} quarters, found {col_count})"
+            if not self.validate_historical_data(cash_flow):
+                col_count = len(cash_flow.get("Operating Cash Flow", [])) if cash_flow else 0
+                raise ValidationError(
+                    "INSUFFICIENT_HISTORY",
+                    f"'{ticker}' has insufficient data (requires {MINIMUM_DATA_QUARTERS} quarters, found {col_count})"
                 )
             
             # Extract latest FCF: Operating CF - CapEx
@@ -77,7 +123,7 @@ class YFinanceService:
             capex = cash_flow.get('Capital Expenditure')
             
             if operating_cf is None or capex is None:
-                raise ValueError(f"MISSING_FIELD: '{ticker}' missing operating cash flow or CapEx data")
+                raise ValidationError("MISSING_FIELD", f"'{ticker}' missing operating cash flow or CapEx data")
             
             # Convert pandas Series to list (most recent first in yfinance)
             if hasattr(operating_cf, 'values'):
@@ -115,11 +161,11 @@ class YFinanceService:
             growth_rate = min(cagr * 2, FCF_GROWTH_CAP)
             growth_rate = max(growth_rate, 0)  # Floor at 0%
             
-        except ValueError:
+        except ValidationError:
             raise
         except Exception as e:
             logger.error(f"Failed to extract cash flow data for {ticker}: {str(e)}")
-            raise ValueError(f"YFINANCE_ERROR: Failed to extract cash flow data: {str(e)}")
+            raise ValidationError("YFINANCE_ERROR", f"Failed to extract cash flow data: {str(e)}")
         
         # Estimate discount rate (WACC) via CAPM
         discount_rate = self._estimate_discount_rate(info)

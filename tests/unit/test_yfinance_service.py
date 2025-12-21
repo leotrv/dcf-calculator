@@ -1,7 +1,7 @@
 """Unit tests for YFinanceService."""
 import pytest
 from unittest.mock import Mock, patch, MagicMock
-from src.services.yfinance_service import YFinanceService
+from src.services.yfinance_service import YFinanceService, ValidationError
 from src.models.request import DCFRequest
 
 
