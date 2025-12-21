@@ -17,16 +17,27 @@ class TestAutoDCFEndpoint:
     @patch('src.services.yfinance_service.yf')
     def test_auto_dcf_endpoint_valid_ticker_aapl(self, mock_yf, client):
         """Test endpoint with valid ticker returns DCFResponse structure."""
-        # Mock yfinance Ticker
+        # Mock yfinance Ticker with proper DataFrame structure
+        # yfinance returns DataFrames with metrics in rows, dates in columns
         ticker = Mock()
-        ticker.quarterly_cashflow = {
-            "Operating Cash Flow": pd.Series([100e9, 98e9, 95e9, 93e9, 90e9]),
-            "Capital Expenditure": pd.Series([10e9, 10e9, 10e9, 10e9, 10e9]),
-        }
-        ticker.quarterly_balance_sheet = {
-            "Total Debt": pd.Series([50e9]),
-            "Cash And Cash Equivalents": pd.Series([20e9]),
-        }
+        
+        # Create cash flow DataFrame: rows are metrics, columns are dates
+        dates = pd.date_range('2024-09-30', periods=5, freq='Q')
+        cf_df = pd.DataFrame({
+            dates[0]: [100e9, 10e9],
+            dates[1]: [98e9, 10e9],
+            dates[2]: [95e9, 10e9],
+            dates[3]: [93e9, 10e9],
+            dates[4]: [90e9, 10e9],
+        }, index=['Operating Cash Flow', 'Capital Expenditure'])
+        
+        # Create balance sheet DataFrame
+        bs_df = pd.DataFrame({
+            dates[0]: [50e9, 20e9],
+        }, index=['Total Debt', 'Cash And Cash Equivalents'])
+        
+        ticker.quarterly_cashflow = cf_df
+        ticker.quarterly_balance_sheet = bs_df
         ticker.info = {
             "symbol": "AAPL",
             "beta": 1.2,

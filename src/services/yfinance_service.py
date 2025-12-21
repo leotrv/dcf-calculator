@@ -69,7 +69,7 @@ class YFinanceService:
         """Check if cash flow data meets minimum history requirement.
         
         Args:
-            cash_flow: Quarterly cash flow dictionary from yfinance.
+            cash_flow: Quarterly cash flow DataFrame from yfinance.
             
         Returns:
             True if sufficient data; False otherwise.
@@ -77,12 +77,34 @@ class YFinanceService:
         if cash_flow is None:
             return False
         
-        ocf = cash_flow.get('Operating Cash Flow')
-        if ocf is None:
+        # Try to get Operating Cash Flow row
+        try:
+            if hasattr(cash_flow, 'loc'):
+                # DataFrame: use .loc to access by row name
+                ocf = cash_flow.loc['Operating Cash Flow']
+            else:
+                # Old dict structure
+                ocf = cash_flow.get('Operating Cash Flow')
+            
+            if ocf is None:
+                return False
+            
+            # Check if empty using pandas-aware method
+            try:
+                if hasattr(ocf, 'empty') and ocf.empty:
+                    return False
+            except (AttributeError, TypeError):
+                pass
+            
+            # Count non-NaN values
+            if hasattr(ocf, 'notna'):
+                col_count = ocf.notna().sum()
+            else:
+                col_count = len(ocf) if hasattr(ocf, '__len__') else 0
+            
+            return col_count >= MINIMUM_DATA_QUARTERS
+        except (KeyError, AttributeError, TypeError):
             return False
-        
-        col_count = len(ocf) if hasattr(ocf, '__len__') else 0
-        return col_count >= MINIMUM_DATA_QUARTERS
     
     def extract_dcf_inputs(self, ticker: str) -> DCFRequest:
         """Extract financial data and create DCFRequest.
@@ -112,26 +134,32 @@ class YFinanceService:
             
             # Check minimum data requirement
             if not self.validate_historical_data(cash_flow):
-                col_count = len(cash_flow.get("Operating Cash Flow", [])) if cash_flow else 0
+                try:
+                    if hasattr(cash_flow, 'loc'):
+                        ocf = cash_flow.loc['Operating Cash Flow']
+                        col_count = ocf.notna().sum() if hasattr(ocf, 'notna') else len(ocf)
+                    else:
+                        ocf = cash_flow.get("Operating Cash Flow", [])
+                        col_count = len(ocf) if hasattr(ocf, '__len__') else 0
+                except (AttributeError, TypeError, KeyError):
+                    col_count = 0
                 raise ValidationError(
                     "INSUFFICIENT_HISTORY",
                     f"'{ticker}' has insufficient data (requires {MINIMUM_DATA_QUARTERS} quarters, found {col_count})"
                 )
             
             # Extract latest FCF: Operating CF - CapEx
-            operating_cf = cash_flow.get('Operating Cash Flow')
-            capex = cash_flow.get('Capital Expenditure')
+            # yfinance returns DataFrames with metrics in rows, dates in columns
+            operating_cf = cash_flow.loc['Operating Cash Flow']
+            capex = cash_flow.loc['Capital Expenditure']
             
-            if operating_cf is None or capex is None:
-                raise ValidationError("MISSING_FIELD", f"'{ticker}' missing operating cash flow or CapEx data")
+            # Convert pandas Series to list (most recent first in yfinance - sort index descending)
+            ocf_series = operating_cf.dropna().sort_index(ascending=False)
+            capex_series = capex.dropna().sort_index(ascending=False)
             
-            # Convert pandas Series to list (most recent first in yfinance)
-            if hasattr(operating_cf, 'values'):
-                ocf_list = list(operating_cf.values)[:MINIMUM_DATA_QUARTERS]
-                capex_list = list(capex.values)[:MINIMUM_DATA_QUARTERS]
-            else:
-                ocf_list = list(operating_cf)[:MINIMUM_DATA_QUARTERS]
-                capex_list = list(capex)[:MINIMUM_DATA_QUARTERS]
+            # Get first N quarters
+            ocf_list = list(ocf_series.values)[:MINIMUM_DATA_QUARTERS]
+            capex_list = list(capex_series.values)[:MINIMUM_DATA_QUARTERS]
             
             # Calculate FCF list (Operating CF - CapEx)
             fcf_list = [ocf - cap for ocf, cap in zip(ocf_list, capex_list)]
@@ -173,22 +201,23 @@ class YFinanceService:
         # Extract balance sheet data for net debt
         try:
             balance_sheet = yf_ticker.quarterly_balance_sheet
-            total_debt = balance_sheet.get('Total Debt') if balance_sheet else None
-            cash = balance_sheet.get('Cash And Cash Equivalents') if balance_sheet else None
+            net_debt = 0.0
             
-            # Get latest values
-            if hasattr(total_debt, 'values'):
-                total_debt_val = total_debt.values[0] / 1e9 if total_debt is not None and len(total_debt) > 0 else 0
-            else:
-                total_debt_val = total_debt[0] / 1e9 if total_debt and len(total_debt) > 0 else 0
+            if balance_sheet is not None and not (hasattr(balance_sheet, 'empty') and balance_sheet.empty):
+                try:
+                    total_debt = balance_sheet.loc['Total Debt']
+                    total_debt_val = float(total_debt.dropna().iloc[0]) / 1e9 if len(total_debt.dropna()) > 0 else 0
+                except (KeyError, IndexError, AttributeError, TypeError):
+                    total_debt_val = 0.0
                 
-            if hasattr(cash, 'values'):
-                cash_val = cash.values[0] / 1e9 if cash is not None and len(cash) > 0 else 0
-            else:
-                cash_val = cash[0] / 1e9 if cash and len(cash) > 0 else 0
-            
-            # Net debt = Total Debt - Cash
-            net_debt = total_debt_val - cash_val
+                try:
+                    cash = balance_sheet.loc['Cash And Cash Equivalents']
+                    cash_val = float(cash.dropna().iloc[0]) / 1e9 if len(cash.dropna()) > 0 else 0
+                except (KeyError, IndexError, AttributeError, TypeError):
+                    cash_val = 0.0
+                
+                # Net debt = Total Debt - Cash
+                net_debt = total_debt_val - cash_val
         except Exception as e:
             logger.warning(f"Failed to extract debt data for {ticker}: {str(e)}")
             net_debt = 0.0

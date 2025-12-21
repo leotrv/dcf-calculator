@@ -1,6 +1,7 @@
 """Pytest configuration and shared fixtures."""
 import pytest
-from unittest.mock import Mock
+import pandas as pd
+from unittest.mock import Mock, MagicMock
 from fastapi.testclient import TestClient
 from src.main import app
 
@@ -13,42 +14,29 @@ def client():
 
 @pytest.fixture
 def mock_yfinance_ticker_aapl():
-    """Mock yfinance Ticker object for AAPL with realistic data."""
+    """Mock yfinance Ticker object for AAPL with realistic data.
+    
+    yfinance returns DataFrames with metrics in rows and dates in columns.
+    """
     ticker = Mock()
     
-    # 5 years of quarterly cash flow (yfinance returns DataFrame with .values)
-    # yfinance returns most recent first
-    import pandas as pd
+    # Create cash flow DataFrame with metrics in rows, dates in columns
+    dates = pd.date_range('2024-09-30', periods=5, freq='Q')
+    cf_df = pd.DataFrame({
+        dates[0]: [100.0e9, 10.0e9],
+        dates[1]: [98.0e9, 10.0e9],
+        dates[2]: [95.0e9, 10.0e9],
+        dates[3]: [93.0e9, 10.0e9],
+        dates[4]: [90.0e9, 10.0e9],
+    }, index=['Operating Cash Flow', 'Capital Expenditure'])
     
-    ocf_data = pd.Series([100.0, 98.0, 95.0, 93.0, 90.0], index=range(5))
-    capex_data = pd.Series([10.0, 10.0, 10.0, 10.0, 10.0], index=range(5))
-    debt_data = pd.Series([50.0], index=range(1))
-    cash_data = pd.Series([20.0], index=range(1))
+    # Create balance sheet DataFrame
+    bs_df = pd.DataFrame({
+        dates[0]: [50.0e9, 20.0e9],
+    }, index=['Total Debt', 'Cash And Cash Equivalents'])
     
-    ticker.quarterly_financials = {}
-    
-    # 5 years of quarterly cash flow
-    cash_flow_dict = Mock()
-    cash_flow_dict.get = Mock(side_effect=lambda key, default=None: {
-        "Operating Cash Flow": ocf_data,
-        "Capital Expenditure": capex_data,
-    }.get(key, default))
-    cash_flow_dict.__getitem__ = Mock(side_effect=lambda key: {
-        "Operating Cash Flow": ocf_data,
-        "Capital Expenditure": capex_data,
-    }[key])
-    cash_flow_dict.columns = range(5)
-    
-    ticker.quarterly_cashflow = {
-        "Operating Cash Flow": ocf_data,
-        "Capital Expenditure": capex_data,
-    }
-    
-    # Latest balance sheet data
-    ticker.quarterly_balance_sheet = {
-        "Total Debt": debt_data,
-        "Cash And Cash Equivalents": cash_data,
-    }
+    ticker.quarterly_cashflow = cf_df
+    ticker.quarterly_balance_sheet = bs_df
     
     # Company metadata
     ticker.info = {
@@ -72,27 +60,20 @@ def mock_yfinance_ticker_invalid():
 @pytest.fixture
 def mock_yfinance_ticker_insufficient_data():
     """Mock yfinance Ticker with insufficient history (<1 year)."""
-    import pandas as pd
-    
     ticker = Mock()
     
-    # Only 1 quarter of data (insufficient)
-    ocf_data = pd.Series([100.0], index=range(1))
-    capex_data = pd.Series([10.0], index=range(1))
-    debt_data = pd.Series([50.0], index=range(1))
-    cash_data = pd.Series([20.0], index=range(1))
+    # Only 1 quarter of data (insufficient, needs 4)
+    dates = pd.date_range('2024-09-30', periods=1, freq='Q')
+    cf_df = pd.DataFrame({
+        dates[0]: [100.0e9, 10.0e9],
+    }, index=['Operating Cash Flow', 'Capital Expenditure'])
     
-    ticker.quarterly_financials = {}
+    bs_df = pd.DataFrame({
+        dates[0]: [50.0e9, 20.0e9],
+    }, index=['Total Debt', 'Cash And Cash Equivalents'])
     
-    ticker.quarterly_cashflow = {
-        "Operating Cash Flow": ocf_data,
-        "Capital Expenditure": capex_data,
-    }
-    
-    ticker.quarterly_balance_sheet = {
-        "Total Debt": debt_data,
-        "Cash And Cash Equivalents": cash_data,
-    }
+    ticker.quarterly_cashflow = cf_df
+    ticker.quarterly_balance_sheet = bs_df
     
     ticker.info = {
         "symbol": "TEST",
@@ -107,26 +88,24 @@ def mock_yfinance_ticker_insufficient_data():
 @pytest.fixture
 def mock_yfinance_ticker_high_growth():
     """Mock yfinance Ticker with high growth rate (tests growth cap)."""
-    import pandas as pd
-    
     ticker = Mock()
     
     # Exponential growth: 15% CAGR over 5 years
-    ocf_data = pd.Series([146.4, 133.1, 121.0, 110.0, 100.0], index=range(5))
-    capex_data = pd.Series([10.0, 10.0, 10.0, 10.0, 10.0], index=range(5))
-    debt_data = pd.Series([50.0], index=range(1))
-    cash_data = pd.Series([20.0], index=range(1))
+    dates = pd.date_range('2024-09-30', periods=5, freq='Q')
+    cf_df = pd.DataFrame({
+        dates[0]: [146.4e9, 10.0e9],
+        dates[1]: [133.1e9, 10.0e9],
+        dates[2]: [121.0e9, 10.0e9],
+        dates[3]: [110.0e9, 10.0e9],
+        dates[4]: [100.0e9, 10.0e9],
+    }, index=['Operating Cash Flow', 'Capital Expenditure'])
     
-    ticker.quarterly_financials = {}
-    ticker.quarterly_cashflow = {
-        "Operating Cash Flow": ocf_data,
-        "Capital Expenditure": capex_data,
-    }
+    bs_df = pd.DataFrame({
+        dates[0]: [50.0e9, 20.0e9],
+    }, index=['Total Debt', 'Cash And Cash Equivalents'])
     
-    ticker.quarterly_balance_sheet = {
-        "Total Debt": debt_data,
-        "Cash And Cash Equivalents": cash_data,
-    }
+    ticker.quarterly_cashflow = cf_df
+    ticker.quarterly_balance_sheet = bs_df
     
     ticker.info = {
         "symbol": "TEST",
@@ -141,26 +120,24 @@ def mock_yfinance_ticker_high_growth():
 @pytest.fixture
 def mock_yfinance_ticker_negative_fcf():
     """Mock yfinance Ticker with negative FCF (unprofitable company)."""
-    import pandas as pd
-    
     ticker = Mock()
     
     # Negative and declining FCF
-    ocf_data = pd.Series([-10.0, -5.0, 0.0, 5.0, 10.0], index=range(5))
-    capex_data = pd.Series([10.0, 10.0, 10.0, 10.0, 10.0], index=range(5))
-    debt_data = pd.Series([50.0], index=range(1))
-    cash_data = pd.Series([20.0], index=range(1))
+    dates = pd.date_range('2024-09-30', periods=5, freq='Q')
+    cf_df = pd.DataFrame({
+        dates[0]: [-10.0e9, 10.0e9],
+        dates[1]: [-5.0e9, 10.0e9],
+        dates[2]: [0.0e9, 10.0e9],
+        dates[3]: [5.0e9, 10.0e9],
+        dates[4]: [10.0e9, 10.0e9],
+    }, index=['Operating Cash Flow', 'Capital Expenditure'])
     
-    ticker.quarterly_financials = {}
-    ticker.quarterly_cashflow = {
-        "Operating Cash Flow": ocf_data,
-        "Capital Expenditure": capex_data,
-    }
+    bs_df = pd.DataFrame({
+        dates[0]: [50.0e9, 20.0e9],
+    }, index=['Total Debt', 'Cash And Cash Equivalents'])
     
-    ticker.quarterly_balance_sheet = {
-        "Total Debt": debt_data,
-        "Cash And Cash Equivalents": cash_data,
-    }
+    ticker.quarterly_cashflow = cf_df
+    ticker.quarterly_balance_sheet = bs_df
     
     ticker.info = {
         "symbol": "TEST",
@@ -175,25 +152,23 @@ def mock_yfinance_ticker_negative_fcf():
 @pytest.fixture
 def mock_yfinance_ticker_missing_beta():
     """Mock yfinance Ticker with missing beta (tests default value)."""
-    import pandas as pd
-    
     ticker = Mock()
     
-    ocf_data = pd.Series([100.0, 98.0, 95.0, 93.0, 90.0], index=range(5))
-    capex_data = pd.Series([10.0, 10.0, 10.0, 10.0, 10.0], index=range(5))
-    debt_data = pd.Series([50.0], index=range(1))
-    cash_data = pd.Series([20.0], index=range(1))
+    dates = pd.date_range('2024-09-30', periods=5, freq='Q')
+    cf_df = pd.DataFrame({
+        dates[0]: [100.0e9, 10.0e9],
+        dates[1]: [98.0e9, 10.0e9],
+        dates[2]: [95.0e9, 10.0e9],
+        dates[3]: [93.0e9, 10.0e9],
+        dates[4]: [90.0e9, 10.0e9],
+    }, index=['Operating Cash Flow', 'Capital Expenditure'])
     
-    ticker.quarterly_financials = {}
-    ticker.quarterly_cashflow = {
-        "Operating Cash Flow": ocf_data,
-        "Capital Expenditure": capex_data,
-    }
+    bs_df = pd.DataFrame({
+        dates[0]: [50.0e9, 20.0e9],
+    }, index=['Total Debt', 'Cash And Cash Equivalents'])
     
-    ticker.quarterly_balance_sheet = {
-        "Total Debt": debt_data,
-        "Cash And Cash Equivalents": cash_data,
-    }
+    ticker.quarterly_cashflow = cf_df
+    ticker.quarterly_balance_sheet = bs_df
     
     ticker.info = {
         "symbol": "TEST",
@@ -203,3 +178,4 @@ def mock_yfinance_ticker_missing_beta():
     }
     
     return ticker
+

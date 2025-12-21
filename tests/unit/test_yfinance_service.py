@@ -65,14 +65,23 @@ class TestYFinanceService:
         """Test extraction returns dict with valid ticker."""
         import pandas as pd
         ticker = Mock()
-        ticker.quarterly_cashflow = {
-            "Operating Cash Flow": pd.Series([100e9, 98e9, 95e9, 93e9, 90e9]),
-            "Capital Expenditure": pd.Series([10e9, 10e9, 10e9, 10e9, 10e9]),
-        }
-        ticker.quarterly_balance_sheet = {
-            "Total Debt": pd.Series([50e9]),
-            "Cash And Cash Equivalents": pd.Series([20e9]),
-        }
+        
+        # Create proper DataFrame structure (metrics in rows, dates in columns)
+        dates = pd.date_range('2024-09-30', periods=5, freq='Q')
+        cf_df = pd.DataFrame({
+            dates[0]: [100e9, 10e9],
+            dates[1]: [98e9, 10e9],
+            dates[2]: [95e9, 10e9],
+            dates[3]: [93e9, 10e9],
+            dates[4]: [90e9, 10e9],
+        }, index=['Operating Cash Flow', 'Capital Expenditure'])
+        
+        bs_df = pd.DataFrame({
+            dates[0]: [50e9, 20e9],
+        }, index=['Total Debt', 'Cash And Cash Equivalents'])
+        
+        ticker.quarterly_cashflow = cf_df
+        ticker.quarterly_balance_sheet = bs_df
         ticker.info = {
             "symbol": "AAPL",
             "beta": 1.2,
@@ -91,18 +100,25 @@ class TestYFinanceService:
 
     @patch('src.services.yfinance_service.yf')
     def test_extract_dcf_inputs_calculates_fcf_correctly(self, mock_yf, service):
-        """Test FCF calculation: Operating CF - CapEx (in dollars, will be converted to billions)."""
+        """Test FCF calculation: Operating CF - CapEx."""
         import pandas as pd
         ticker = Mock()
-        # Values in dollars (yfinance returns raw dollar amounts)
-        ticker.quarterly_cashflow = {
-            "Operating Cash Flow": pd.Series([100e9, 98e9, 95e9, 93e9, 90e9]),  # In dollars
-            "Capital Expenditure": pd.Series([10e9, 10e9, 10e9, 10e9, 10e9]),    # In dollars
-        }
-        ticker.quarterly_balance_sheet = {
-            "Total Debt": pd.Series([50e9]),  # In dollars
-            "Cash And Cash Equivalents": pd.Series([20e9]),  # In dollars
-        }
+        
+        dates = pd.date_range('2024-09-30', periods=5, freq='Q')
+        cf_df = pd.DataFrame({
+            dates[0]: [100e9, 10e9],
+            dates[1]: [98e9, 10e9],
+            dates[2]: [95e9, 10e9],
+            dates[3]: [93e9, 10e9],
+            dates[4]: [90e9, 10e9],
+        }, index=['Operating Cash Flow', 'Capital Expenditure'])
+        
+        bs_df = pd.DataFrame({
+            dates[0]: [50e9, 20e9],
+        }, index=['Total Debt', 'Cash And Cash Equivalents'])
+        
+        ticker.quarterly_cashflow = cf_df
+        ticker.quarterly_balance_sheet = bs_df
         ticker.info = {
             "symbol": "AAPL",
             "beta": 1.2,
@@ -114,22 +130,30 @@ class TestYFinanceService:
         
         result = service.extract_dcf_inputs("AAPL")
         
-        # Latest FCF should be (100e9 - 10e9) / 1e9 = 90.0 billion
-        assert result.starting_fcf == 90.0
+        # Latest FCF is most recent (dates[4]): (90e9 - 10e9) / 1e9 = 80.0 billion
+        assert result.starting_fcf == 80.0
 
     @patch('src.services.yfinance_service.yf')
     def test_extract_dcf_inputs_calculates_fcf_5yr_cagr(self, mock_yf, service):
         """Test 5-year CAGR calculation from quarterly history."""
         import pandas as pd
         ticker = Mock()
-        ticker.quarterly_cashflow = {
-            "Operating Cash Flow": pd.Series([100e9, 98e9, 95e9, 93e9, 90e9]),
-            "Capital Expenditure": pd.Series([10e9, 10e9, 10e9, 10e9, 10e9]),
-        }
-        ticker.quarterly_balance_sheet = {
-            "Total Debt": pd.Series([50e9]),
-            "Cash And Cash Equivalents": pd.Series([20e9]),
-        }
+        
+        dates = pd.date_range('2024-09-30', periods=5, freq='Q')
+        cf_df = pd.DataFrame({
+            dates[0]: [100e9, 10e9],
+            dates[1]: [98e9, 10e9],
+            dates[2]: [95e9, 10e9],
+            dates[3]: [93e9, 10e9],
+            dates[4]: [90e9, 10e9],
+        }, index=['Operating Cash Flow', 'Capital Expenditure'])
+        
+        bs_df = pd.DataFrame({
+            dates[0]: [50e9, 20e9],
+        }, index=['Total Debt', 'Cash And Cash Equivalents'])
+        
+        ticker.quarterly_cashflow = cf_df
+        ticker.quarterly_balance_sheet = bs_df
         ticker.info = {
             "symbol": "AAPL",
             "beta": 1.2,
@@ -151,14 +175,22 @@ class TestYFinanceService:
         """Test WACC estimation via CAPM: risk_free + beta * market_premium."""
         import pandas as pd
         ticker = Mock()
-        ticker.quarterly_cashflow = {
-            "Operating Cash Flow": pd.Series([100e9, 98e9, 95e9, 93e9, 90e9]),
-            "Capital Expenditure": pd.Series([10e9, 10e9, 10e9, 10e9, 10e9]),
-        }
-        ticker.quarterly_balance_sheet = {
-            "Total Debt": pd.Series([50e9]),
-            "Cash And Cash Equivalents": pd.Series([20e9]),
-        }
+        
+        dates = pd.date_range('2024-09-30', periods=5, freq='Q')
+        cf_df = pd.DataFrame({
+            dates[0]: [100e9, 10e9],
+            dates[1]: [98e9, 10e9],
+            dates[2]: [95e9, 10e9],
+            dates[3]: [93e9, 10e9],
+            dates[4]: [90e9, 10e9],
+        }, index=['Operating Cash Flow', 'Capital Expenditure'])
+        
+        bs_df = pd.DataFrame({
+            dates[0]: [50e9, 20e9],
+        }, index=['Total Debt', 'Cash And Cash Equivalents'])
+        
+        ticker.quarterly_cashflow = cf_df
+        ticker.quarterly_balance_sheet = bs_df
         ticker.info = {
             "symbol": "AAPL",
             "beta": 1.2,
@@ -171,7 +203,6 @@ class TestYFinanceService:
         result = service.extract_dcf_inputs("AAPL")
         
         # WACC should be ~0.045 + 1.2 * 0.06 = 0.117 (11.7%)
-        # Allow some variance for calculation method
         assert 0.08 < result.discount_rate < 0.15
 
     @patch('src.services.yfinance_service.yf')
@@ -181,21 +212,21 @@ class TestYFinanceService:
         ticker = Mock()
         
         # High growth scenario: CAGR = 15%
-        # Values in dollars (yfinance returns raw dollar amounts)
-        ocf_data = pd.Series([146.4e9, 133.1e9, 121.0e9, 110.0e9, 100.0e9])
-        capex_data = pd.Series([10e9, 10e9, 10e9, 10e9, 10e9])
-        debt_data = pd.Series([50e9])
-        cash_data = pd.Series([20e9])
+        dates = pd.date_range('2024-09-30', periods=5, freq='Q')
+        cf_df = pd.DataFrame({
+            dates[0]: [146.4e9, 10e9],
+            dates[1]: [133.1e9, 10e9],
+            dates[2]: [121.0e9, 10e9],
+            dates[3]: [110.0e9, 10e9],
+            dates[4]: [100.0e9, 10e9],
+        }, index=['Operating Cash Flow', 'Capital Expenditure'])
         
-        ticker.quarterly_financials = {}
-        ticker.quarterly_cashflow = {
-            "Operating Cash Flow": ocf_data,
-            "Capital Expenditure": capex_data,
-        }
-        ticker.quarterly_balance_sheet = {
-            "Total Debt": debt_data,
-            "Cash And Cash Equivalents": cash_data,
-        }
+        bs_df = pd.DataFrame({
+            dates[0]: [50e9, 20e9],
+        }, index=['Total Debt', 'Cash And Cash Equivalents'])
+        
+        ticker.quarterly_cashflow = cf_df
+        ticker.quarterly_balance_sheet = bs_df
         ticker.info = {
             "symbol": "TEST",
             "beta": 1.0,
@@ -216,14 +247,21 @@ class TestYFinanceService:
         import pandas as pd
         ticker = Mock()
         
-        ticker.quarterly_cashflow = {
-            "Operating Cash Flow": pd.Series([100e9, 98e9, 95e9, 93e9, 90e9]),
-            "Capital Expenditure": pd.Series([10e9, 10e9, 10e9, 10e9, 10e9]),
-        }
-        ticker.quarterly_balance_sheet = {
-            "Total Debt": pd.Series([50e9]),
-            "Cash And Cash Equivalents": pd.Series([20e9]),
-        }
+        dates = pd.date_range('2024-09-30', periods=5, freq='Q')
+        cf_df = pd.DataFrame({
+            dates[0]: [100e9, 10e9],
+            dates[1]: [98e9, 10e9],
+            dates[2]: [95e9, 10e9],
+            dates[3]: [93e9, 10e9],
+            dates[4]: [90e9, 10e9],
+        }, index=['Operating Cash Flow', 'Capital Expenditure'])
+        
+        bs_df = pd.DataFrame({
+            dates[0]: [50e9, 20e9],
+        }, index=['Total Debt', 'Cash And Cash Equivalents'])
+        
+        ticker.quarterly_cashflow = cf_df
+        ticker.quarterly_balance_sheet = bs_df
         ticker.info = {
             "symbol": "TEST",
             "sharesOutstanding": 2500.0,
@@ -244,14 +282,21 @@ class TestYFinanceService:
         import pandas as pd
         ticker = Mock()
         
-        ticker.quarterly_cashflow = {
-            "Operating Cash Flow": pd.Series([-10e9, -5e9, 0.0, 5e9, 10e9]),
-            "Capital Expenditure": pd.Series([10e9, 10e9, 10e9, 10e9, 10e9]),
-        }
-        ticker.quarterly_balance_sheet = {
-            "Total Debt": pd.Series([50e9]),
-            "Cash And Cash Equivalents": pd.Series([20e9]),
-        }
+        dates = pd.date_range('2024-09-30', periods=5, freq='Q')
+        cf_df = pd.DataFrame({
+            dates[0]: [-10e9, 10e9],
+            dates[1]: [-5e9, 10e9],
+            dates[2]: [0.0, 10e9],
+            dates[3]: [5e9, 10e9],
+            dates[4]: [10e9, 10e9],
+        }, index=['Operating Cash Flow', 'Capital Expenditure'])
+        
+        bs_df = pd.DataFrame({
+            dates[0]: [50e9, 20e9],
+        }, index=['Total Debt', 'Cash And Cash Equivalents'])
+        
+        ticker.quarterly_cashflow = cf_df
+        ticker.quarterly_balance_sheet = bs_df
         ticker.info = {
             "symbol": "TEST",
             "beta": 1.2,
