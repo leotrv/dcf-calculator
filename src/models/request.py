@@ -8,21 +8,23 @@ class DCFRequest(BaseModel):
         json_schema_extra={
             "example": {
                 "starting_fcf": 72.764,
-                "fcf_growth_rate": 12.0,
+                "fcf_growth_rate": 0.12,
                 "years": 10,
-                "discount_rate": 8.0,
-                "terminal_growth_rate": 3.0,
+                "discount_rate": 0.08,
+                "terminal_growth_rate": 0.03,
                 "net_debt": -54.3,
+                "number_of_shares": 2500.0,
             }
         }
     )
     
     starting_fcf: float = Field(..., description="Starting free cash flow (last historical year). Units: billions")
-    fcf_growth_rate: float = Field(..., description="Forecast FCF growth rate (percent). Example: 5.0 = 5%")
+    fcf_growth_rate: float = Field(..., description="Forecast FCF growth rate (decimal). Example: 0.05 = 5%")
     years: int = Field(..., description="Number of forecast years (integer)")
-    discount_rate: float = Field(..., description="Discount rate / WACC (percent). Example: 8.0 = 8%")
-    terminal_growth_rate: Optional[float] = Field(None, description="Terminal (perpetuity) growth rate (percent). Example: 3.0 = 3%")
+    discount_rate: float = Field(..., description="Discount rate / WACC (decimal). Example: 0.08 = 8%")
+    terminal_growth_rate: Optional[float] = Field(None, description="Terminal (perpetuity) growth rate (decimal). Example: 0.03 = 3%")
     net_debt: Optional[float] = Field(None, description="Net debt in billions. Positive = net debt; negative = net cash")
+    number_of_shares: Optional[float] = Field(None, description="Number of shares outstanding (in millions)")
     
     _fcf_list: List[float] = PrivateAttr()
 
@@ -73,7 +75,7 @@ class DCFRequest(BaseModel):
     def compute_fcf_list(self):
         """Generate FCF list based on starting_fcf, fcf_growth_rate, and years."""
         fcf_list = []
-        growth_factor = 1.0 + (self.fcf_growth_rate / 100.0)
+        growth_factor = 1.0 + self.fcf_growth_rate
         for year in range(1, self.years + 1):
             fcf = self.starting_fcf * (growth_factor ** year)
             fcf_list.append(fcf)
@@ -97,8 +99,8 @@ class DCFRequest(BaseModel):
             return 0.0
         
         last_fcf = self.fcf[-1]
-        wacc = self.discount_rate / 100.0
-        g = self.terminal_growth_rate / 100.0
+        wacc = self.discount_rate
+        g = self.terminal_growth_rate
         
         tv = last_fcf * (1.0 + g) / (wacc - g)
         return tv

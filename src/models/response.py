@@ -13,6 +13,7 @@ def _round_currency(value: float) -> float:
 class DCFResponse(BaseModel):
     enterprise_value: float
     equity_value: float
+    value_per_share: Optional[float] = None
     discounted_fcfs: List[float]
     discounted_terminal_value: float
 
@@ -21,6 +22,8 @@ class DCFResponse(BaseModel):
         # Round monetary outputs to 2 decimals only at serialization
         raw['enterprise_value'] = _round_currency(raw['enterprise_value'])
         raw['equity_value'] = _round_currency(raw['equity_value'])
+        if raw.get('value_per_share') is not None:
+            raw['value_per_share'] = _round_currency(raw['value_per_share'])
         raw['discounted_fcfs'] = [ _round_currency(x) for x in raw.get('discounted_fcfs', []) ]
         raw['discounted_terminal_value'] = _round_currency(raw.get('discounted_terminal_value', 0.0))
         return raw

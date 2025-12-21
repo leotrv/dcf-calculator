@@ -1,11 +1,12 @@
 from __future__ import annotations
-from typing import NamedTuple, List
+from typing import NamedTuple, List, Optional
 from src.models.request import DCFRequest
 
 
 class DCFResult(NamedTuple):
     enterprise_value: float
     equity_value: float
+    value_per_share: Optional[float]
     discounted_fcfs: List[float]
     discounted_terminal_value: float
 
@@ -29,7 +30,7 @@ class DCFCalculationService:
 
     def calculate_dcf(self, req: DCFRequest) -> DCFResult:
         # Cross-field business validation is performed in DCFRequest model validators
-        wacc = req.discount_rate / 100.0
+        wacc = req.discount_rate
         fcf_list = req.fcf
         if len(fcf_list) == 0:
             raise ValueError('FCF_LENGTH: fcf list must contain at least 1 item')
@@ -51,9 +52,15 @@ class DCFCalculationService:
         enterprise_value = pv_fcfs + discounted_tv
         equity_value = enterprise_value - (req.net_debt or 0.0)
 
+        # Calculate value per share if number_of_shares is provided
+        value_per_share = None
+        if req.number_of_shares and req.number_of_shares > 0:
+            value_per_share = equity_value / req.number_of_shares
+
         return DCFResult(
             enterprise_value=enterprise_value,
             equity_value=equity_value,
+            value_per_share=value_per_share,
             discounted_fcfs=discounted_fcfs,
             discounted_terminal_value=discounted_tv,
         )

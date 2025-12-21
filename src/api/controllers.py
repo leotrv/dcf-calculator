@@ -14,7 +14,7 @@ async def calculate(payload: DCFRequest):
     Units and conventions:
     - All cash amounts (`starting_fcf`, `net_debt`, `terminal_value`) are expressed in billions.
     - Feel free to use other units, but be consistent. Mathematical model is unit-agnostic.
-    - Growth rates and discount rates are expressed in percent (e.g., `8.0` means 8%).
+    - Growth rates and discount rates are expressed in decimal format (e.g., `0.08` means 8%).
     - `starting_fcf` is the last historical year's FCF; the first forecast FCF (FCF1) = starting_fcf * (1 + fcf_growth_rate).
     """
 
@@ -24,6 +24,7 @@ async def calculate(payload: DCFRequest):
         response = DCFResponse(
             enterprise_value=result.enterprise_value,
             equity_value=result.equity_value,
+            value_per_share=result.value_per_share,
             discounted_fcfs=result.discounted_fcfs,
             discounted_terminal_value=result.discounted_terminal_value,
         )
