@@ -1,0 +1,188 @@
+"""YFinance data extraction service for auto DCF calculations."""
+import logging
+from typing import Optional
+import yfinance as yf
+from src.models.request import DCFRequest
+
+logger = logging.getLogger(__name__)
+
+# Constants from research.md
+RISK_FREE_RATE = 0.045  # 4.5%
+MARKET_RISK_PREMIUM = 0.06  # 6%
+DEFAULT_BETA = 1.0
+TERMINAL_GROWTH_RATE = 0.025  # 2.5%
+FCF_GROWTH_CAP = 0.20  # 20%
+NETWORK_TIMEOUT = 10  # seconds
+MINIMUM_DATA_QUARTERS = 4  # 1 year
+
+
+class YFinanceService:
+    """Extract financial data from yfinance and prepare DCFRequest inputs."""
+    
+    def validate_ticker(self, ticker: str) -> bool:
+        """Validate ticker format (alphabetic only).
+        
+        Args:
+            ticker: Stock ticker symbol.
+            
+        Returns:
+            True if valid; False otherwise.
+        """
+        if not ticker:
+            return False
+        return ticker.isalpha()
+    
+    def extract_dcf_inputs(self, ticker: str) -> DCFRequest:
+        """Extract financial data and create DCFRequest.
+        
+        Args:
+            ticker: Stock ticker symbol.
+            
+        Returns:
+            DCFRequest object with extracted inputs.
+            
+        Raises:
+            ValueError: If ticker is invalid or data is insufficient.
+        """
+        # Validate ticker format
+        if not self.validate_ticker(ticker):
+            raise ValueError(f"INVALID_TICKER: '{ticker}' is not a valid ticker symbol")
+        
+        # Fetch yfinance data
+        try:
+            yf_ticker = yf.Ticker(ticker, timeout=NETWORK_TIMEOUT)
+            info = yf_ticker.info
+            
+            # Check if ticker exists
+            if not info or 'symbol' not in info:
+                raise ValueError(f"TICKER_NOT_FOUND: '{ticker}' not found in yfinance")
+        except Exception as e:
+            logger.error(f"YFINANCE_ERROR: Failed to fetch ticker {ticker}: {str(e)}")
+            raise ValueError(f"YFINANCE_ERROR: {str(e)}")
+        
+        # Extract historical cash flow data
+        try:
+            cash_flow = yf_ticker.quarterly_cashflow
+            
+            # Check minimum data requirement
+            col_count = len(cash_flow.get("Operating Cash Flow", [])) if cash_flow else 0
+            if col_count < MINIMUM_DATA_QUARTERS:
+                raise ValueError(
+                    f"INSUFFICIENT_HISTORY: '{ticker}' has insufficient data "
+                    f"(requires {MINIMUM_DATA_QUARTERS} quarters, found {col_count})"
+                )
+            
+            # Extract latest FCF: Operating CF - CapEx
+            operating_cf = cash_flow.get('Operating Cash Flow')
+            capex = cash_flow.get('Capital Expenditure')
+            
+            if operating_cf is None or capex is None:
+                raise ValueError(f"MISSING_FIELD: '{ticker}' missing operating cash flow or CapEx data")
+            
+            # Convert pandas Series to list (most recent first in yfinance)
+            if hasattr(operating_cf, 'values'):
+                ocf_list = list(operating_cf.values)[:MINIMUM_DATA_QUARTERS]
+                capex_list = list(capex.values)[:MINIMUM_DATA_QUARTERS]
+            else:
+                ocf_list = list(operating_cf)[:MINIMUM_DATA_QUARTERS]
+                capex_list = list(capex)[:MINIMUM_DATA_QUARTERS]
+            
+            # Calculate FCF list (Operating CF - CapEx)
+            fcf_list = [ocf - cap for ocf, cap in zip(ocf_list, capex_list)]
+            
+            # Latest FCF (first in list, most recent)
+            latest_fcf = fcf_list[0] / 1e9  # Convert to billions
+            
+            # Log warning if FCF is negative
+            if latest_fcf < 0:
+                logger.warning(f"Negative FCF detected for {ticker}: {latest_fcf:.2f}B")
+            
+            # Calculate 5-year CAGR
+            if len(fcf_list) >= 2:
+                earliest_fcf = fcf_list[-1]
+                years = (len(fcf_list) - 1) / 4  # Convert quarters to years
+                
+                # CAGR = (Ending / Beginning)^(1/years) - 1
+                if earliest_fcf > 0:
+                    cagr = (latest_fcf / (earliest_fcf / 1e9)) ** (1 / years) - 1
+                else:
+                    # If earliest FCF is negative, use conservative 0%
+                    cagr = 0.0
+            else:
+                cagr = 0.0
+            
+            # Apply growth rate cap: min(2x CAGR, 20%)
+            growth_rate = min(cagr * 2, FCF_GROWTH_CAP)
+            growth_rate = max(growth_rate, 0)  # Floor at 0%
+            
+        except ValueError:
+            raise
+        except Exception as e:
+            logger.error(f"Failed to extract cash flow data for {ticker}: {str(e)}")
+            raise ValueError(f"YFINANCE_ERROR: Failed to extract cash flow data: {str(e)}")
+        
+        # Estimate discount rate (WACC) via CAPM
+        discount_rate = self._estimate_discount_rate(info)
+        
+        # Extract balance sheet data for net debt
+        try:
+            balance_sheet = yf_ticker.quarterly_balance_sheet
+            total_debt = balance_sheet.get('Total Debt') if balance_sheet else None
+            cash = balance_sheet.get('Cash And Cash Equivalents') if balance_sheet else None
+            
+            # Get latest values
+            if hasattr(total_debt, 'values'):
+                total_debt_val = total_debt.values[0] / 1e9 if total_debt is not None and len(total_debt) > 0 else 0
+            else:
+                total_debt_val = total_debt[0] / 1e9 if total_debt and len(total_debt) > 0 else 0
+                
+            if hasattr(cash, 'values'):
+                cash_val = cash.values[0] / 1e9 if cash is not None and len(cash) > 0 else 0
+            else:
+                cash_val = cash[0] / 1e9 if cash and len(cash) > 0 else 0
+            
+            # Net debt = Total Debt - Cash
+            net_debt = total_debt_val - cash_val
+        except Exception as e:
+            logger.warning(f"Failed to extract debt data for {ticker}: {str(e)}")
+            net_debt = 0.0
+        
+        # Get shares outstanding
+        try:
+            shares_outstanding = info.get('sharesOutstanding', 0) / 1e6  # Convert to millions
+        except Exception as e:
+            logger.warning(f"Failed to extract shares outstanding for {ticker}: {str(e)}")
+            shares_outstanding = 0.0
+        
+        # Create and return DCFRequest
+        return DCFRequest(
+            starting_fcf=max(latest_fcf, 0.01),  # Minimum 0.01B to avoid zero
+            fcf_growth_rate=growth_rate,
+            years=10,  # Default 10-year forecast
+            discount_rate=discount_rate,
+            terminal_growth_rate=TERMINAL_GROWTH_RATE,
+            net_debt=net_debt,
+            number_of_shares=shares_outstanding
+        )
+    
+    def _estimate_discount_rate(self, info: dict) -> float:
+        """Estimate WACC using CAPM: Rf + beta * (Rm - Rf).
+        
+        Args:
+            info: yfinance ticker info dict.
+            
+        Returns:
+            Discount rate (WACC) as decimal.
+        """
+        try:
+            beta = info.get('beta', DEFAULT_BETA)
+            if beta is None or beta <= 0:
+                beta = DEFAULT_BETA
+        except Exception:
+            logger.warning("Failed to extract beta, using default 1.0")
+            beta = DEFAULT_BETA
+        
+        # WACC = Rf + beta * (Rm - Rf)
+        wacc = RISK_FREE_RATE + beta * MARKET_RISK_PREMIUM
+        
+        return max(wacc, 0.01)  # Floor at 1% to avoid zero

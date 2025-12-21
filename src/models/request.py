@@ -3,6 +3,33 @@ from typing import List, Optional
 from pydantic import BaseModel, Field, field_validator, model_validator, computed_field, PrivateAttr, ConfigDict
 
 
+class AutoDCFRequest(BaseModel):
+    """Request model for automatic DCF calculation from stock ticker.
+    
+    The /dcf/auto-calculate endpoint uses this to fetch historical financial
+    data via yfinance and automatically populate DCFRequest fields.
+    """
+    
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "ticker": "AAPL"
+            }
+        }
+    )
+    
+    ticker: str = Field(..., description="Stock ticker symbol (e.g., 'AAPL', 'MSFT')")
+    
+    @field_validator('ticker')
+    def validate_ticker(cls, v: str):
+        """Validate ticker is non-empty and alphanumeric."""
+        if not v:
+            raise ValueError('TICKER_EMPTY: ticker cannot be empty')
+        if not v.isalpha():
+            raise ValueError('TICKER_INVALID: ticker must contain only alphabetic characters')
+        return v.upper()
+
+
 class DCFRequest(BaseModel):
     model_config = ConfigDict(
         json_schema_extra={
