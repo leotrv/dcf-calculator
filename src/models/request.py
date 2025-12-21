@@ -40,7 +40,7 @@ class DCFRequest(BaseModel):
                 "discount_rate": 0.08,
                 "terminal_growth_rate": 0.03,
                 "net_debt": -54.3,
-                "number_of_shares": 2500.0,
+                "number_of_shares": 15500000000,  # Actual count (e.g., 15.5 billion shares)
             }
         }
     )
@@ -51,7 +51,7 @@ class DCFRequest(BaseModel):
     discount_rate: float = Field(..., description="Discount rate / WACC (decimal). Example: 0.08 = 8%")
     terminal_growth_rate: Optional[float] = Field(None, description="Terminal (perpetuity) growth rate (decimal). Example: 0.03 = 3%")
     net_debt: Optional[float] = Field(None, description="Net debt in billions. Positive = net debt; negative = net cash")
-    number_of_shares: Optional[float] = Field(None, description="Number of shares outstanding (in millions)")
+    number_of_shares: Optional[float] = Field(None, description="Number of shares outstanding (actual count, not millions)")
     
     _fcf_list: List[float] = PrivateAttr()
 

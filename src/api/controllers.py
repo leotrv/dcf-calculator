@@ -14,9 +14,10 @@ async def calculate(payload: DCFRequest):
 
     Units and conventions:
     - All cash amounts (`starting_fcf`, `net_debt`, `terminal_value`) are expressed in billions.
-    - Feel free to use other units, but be consistent. Mathematical model is unit-agnostic.
+    - `number_of_shares` is the actual share count (not in millions), allowing proper value_per_share calculation.
     - Growth rates and discount rates are expressed in decimal format (e.g., `0.08` means 8%).
     - `starting_fcf` is the last historical year's FCF; the first forecast FCF (FCF1) = starting_fcf * (1 + fcf_growth_rate).
+    - `value_per_share` is calculated as: (equity_value_in_billions * 1e9) / number_of_shares, giving the price per share in dollars.
     """
 
     service = DCFCalculationService()
@@ -66,6 +67,7 @@ async def auto_calculate(payload: AutoDCFRequest):
     try:
         # Extract DCF inputs from yfinance
         dcf_request = yfinance_service.extract_dcf_inputs(payload.ticker)
+        print("dcf_request:", dcf_request)
         
         # Calculate DCF using extracted inputs
         result = dcf_service.calculate_dcf(dcf_request)
